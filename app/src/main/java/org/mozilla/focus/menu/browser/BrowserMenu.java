@@ -18,8 +18,8 @@ import android.view.ViewGroup;
 import android.widget.PopupWindow;
 import android.widget.TextView;
 
+import mozilla.components.browser.session.tab.CustomTabConfig;
 import org.mozilla.focus.R;
-import org.mozilla.focus.customtabs.CustomTabConfig;
 import org.mozilla.focus.fragment.BrowserFragment;
 import org.mozilla.focus.utils.ViewUtils;
 
@@ -65,7 +65,7 @@ public class BrowserMenu extends PopupWindow {
     }
 
     public void show(View anchor) {
-        final int xOffset = ViewUtils.isRTL(anchor) ? -anchor.getWidth() : 0;
+        final int xOffset = ViewUtils.INSTANCE.isRTL(anchor) ? -anchor.getWidth() : 0;
 
         super.showAsDropDown(anchor, xOffset, -(anchor.getHeight() + anchor.getPaddingBottom()));
     }

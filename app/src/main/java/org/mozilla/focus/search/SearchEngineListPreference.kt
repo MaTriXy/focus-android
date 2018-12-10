@@ -7,22 +7,29 @@ package org.mozilla.focus.search
 import android.content.Context
 import android.content.res.Resources
 import android.graphics.drawable.BitmapDrawable
-import android.preference.Preference
+import android.support.v7.preference.Preference
+import android.support.v7.preference.PreferenceViewHolder
 import android.support.v7.widget.RecyclerView
 import android.util.AttributeSet
 import android.view.LayoutInflater
-import android.view.View
 import android.view.ViewGroup
 import android.widget.CompoundButton
 import android.widget.RadioGroup
-import kotlinx.coroutines.experimental.android.UI
-import kotlinx.coroutines.experimental.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Dispatchers.Main
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import mozilla.components.browser.search.SearchEngine
-import org.mozilla.focus.Components
 import org.mozilla.focus.R
+import org.mozilla.focus.ext.components
 import org.mozilla.focus.utils.Settings
+import kotlin.coroutines.CoroutineContext
 
-abstract class SearchEngineListPreference : Preference {
+abstract class SearchEngineListPreference : Preference, CoroutineScope {
+    private val job = Job()
+    override val coroutineContext: CoroutineContext
+        get() = job + Dispatchers.Main
     protected var searchEngines: List<SearchEngine> = emptyList()
     protected var searchEngineGroup: RadioGroup? = null
 
@@ -36,24 +43,27 @@ abstract class SearchEngineListPreference : Preference {
         layoutResource = R.layout.preference_search_engine_chooser
     }
 
-    override fun onCreateView(parent: ViewGroup): View {
-        val layoutView = super.onCreateView(parent)
-        searchEngineGroup = layoutView.findViewById(R.id.search_engine_group)
+    override fun onBindViewHolder(holder: PreferenceViewHolder?) {
+        super.onBindViewHolder(holder)
+        searchEngineGroup = holder!!.itemView.findViewById(R.id.search_engine_group)
         val context = searchEngineGroup!!.context
 
-        searchEngines = Components.searchEngineManager.getSearchEngines(context)
-                .sortedBy { it.name }
+        searchEngines = context.components.searchEngineManager.getSearchEngines(context)
+            .sortedBy { it.name }
 
         refreshSearchEngineViews(context)
+    }
 
-        return layoutView
+    override fun onDetached() {
+        job.cancel()
+        super.onDetached()
     }
 
     protected abstract fun updateDefaultItem(defaultButton: CompoundButton)
 
     fun refetchSearchEngines() {
-        launch (UI) {
-            searchEngines = Components.searchEngineManager
+        launch(Main) {
+            searchEngines = context.components.searchEngineManager
                     .load(this@SearchEngineListPreference.context)
                     .await()
                     .sortedBy { it.name }
@@ -69,7 +79,7 @@ abstract class SearchEngineListPreference : Preference {
             return
         }
 
-        val defaultSearchEngine = Components.searchEngineManager.getDefaultSearchEngine(
+        val defaultSearchEngine = context.components.searchEngineManager.getDefaultSearchEngine(
                 context,
                 Settings.getInstance(context).defaultSearchEngineName
         ).identifier

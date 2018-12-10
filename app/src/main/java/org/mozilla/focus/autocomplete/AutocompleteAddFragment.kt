@@ -4,9 +4,9 @@
 
 package org.mozilla.focus.autocomplete
 
-import android.app.Fragment
 import android.content.Context
 import android.os.Bundle
+import android.support.v4.app.Fragment
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuInflater
@@ -14,19 +14,27 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import kotlinx.android.synthetic.main.fragment_autocomplete_add_domain.*
-import kotlinx.coroutines.experimental.CommonPool
-import kotlinx.coroutines.experimental.android.UI
-import kotlinx.coroutines.experimental.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.Dispatchers.Main
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import mozilla.components.browser.domains.CustomDomains
 import org.mozilla.focus.R
 import org.mozilla.focus.settings.BaseSettingsFragment
 import org.mozilla.focus.telemetry.TelemetryWrapper
 import org.mozilla.focus.utils.ViewUtils
+import kotlin.coroutines.CoroutineContext
 
 /**
  * Fragment showing settings UI to add custom autocomplete domains.
  */
-class AutocompleteAddFragment : Fragment() {
+class AutocompleteAddFragment : Fragment(), CoroutineScope {
+    private var job = Job()
+    override val coroutineContext: CoroutineContext
+        get() = job + Dispatchers.Main
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setHasOptionsMenu(true)
@@ -35,21 +43,26 @@ class AutocompleteAddFragment : Fragment() {
     override fun onResume() {
         super.onResume()
 
+        if (job.isCancelled) {
+            job = Job()
+        }
+
         val updater = activity as BaseSettingsFragment.ActionBarUpdater
         updater.updateTitle(R.string.preference_autocomplete_title_add)
         updater.updateIcon(R.drawable.ic_close)
     }
 
-    override fun onCreateView(inflater: LayoutInflater?, container: ViewGroup?, savedInstanceState: Bundle?): View =
-            inflater!!.inflate(R.layout.fragment_autocomplete_add_domain, container, false)
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
+            inflater.inflate(R.layout.fragment_autocomplete_add_domain, container, false)
 
-    override fun onViewCreated(view: View?, savedInstanceState: Bundle?) {
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         ViewUtils.showKeyboard(domainView)
     }
 
     override fun onPause() {
+        job.cancel()
+        ViewUtils.hideKeyboard(activity?.currentFocus)
         super.onPause()
-        ViewUtils.hideKeyboard(activity.currentFocus)
     }
 
     override fun onCreateOptionsMenu(menu: Menu?, inflater: MenuInflater?) {
@@ -63,19 +76,19 @@ class AutocompleteAddFragment : Fragment() {
                     .trim()
                     .toLowerCase()
 
-            launch(CommonPool) {
-                val domains = CustomDomains.load(activity)
+            launch(IO) {
+                val domains = CustomDomains.load(activity!!)
                 val error = when {
                     domain.isEmpty() -> getString(R.string.preference_autocomplete_add_error)
                     domains.contains(domain) -> getString(R.string.preference_autocomplete_duplicate_url_error)
                     else -> null
                 }
 
-                launch(UI) {
+                launch(Main) {
                     if (error != null) {
                         domainView.error = error
                     } else {
-                        saveDomainAndClose(activity.applicationContext, domain)
+                        saveDomainAndClose(activity!!.applicationContext, domain)
                     }
                 }
             }
@@ -87,7 +100,7 @@ class AutocompleteAddFragment : Fragment() {
     }
 
     private fun saveDomainAndClose(context: Context, domain: String) {
-        launch(CommonPool) {
+        launch(IO) {
             CustomDomains.add(context, domain)
 
             TelemetryWrapper.saveAutocompleteDomainEvent(TelemetryWrapper.AutoCompleteEventSource.SETTINGS)
@@ -95,6 +108,6 @@ class AutocompleteAddFragment : Fragment() {
 
         ViewUtils.showBrandedSnackbar(view, R.string.preference_autocomplete_add_confirmation, 0)
 
-        fragmentManager.popBackStack()
+        fragmentManager?.popBackStack()
     }
 }

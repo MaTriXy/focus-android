@@ -15,14 +15,17 @@ import taskcluster
 import lib.tasks
 
 TASK_ID = os.environ.get('TASK_ID')
+SCHEDULER_ID = os.environ.get('SCHEDULER_ID')
+HEAD_REV = os.environ.get('MOBILE_HEAD_REV')
 
 BUILDER = lib.tasks.TaskBuilder(
     task_id=TASK_ID,
-    repo_url=os.environ.get('GITHUB_HEAD_REPO_URL'),
-    branch=os.environ.get('GITHUB_HEAD_BRANCH'),
-    commit=os.environ.get('GITHUB_HEAD_SHA'),
+    repo_url=os.environ.get('MOBILE_HEAD_REPOSITORY'),
+    branch=os.environ.get('MOBILE_HEAD_BRANCH'),
+    commit=HEAD_REV,
     owner="skaspari@mozilla.com",
-    source="https://github.com/mozilla-mobile/focus-android/tree/master/tools/taskcluster"
+    source='https://github.com/mozilla-mobile/focus-android/raw/{}/.taskcluster.yml'.format(HEAD_REV),
+    scheduler_id=SCHEDULER_ID,
 )
 
 def generate_build_task(apks, tag):
@@ -37,9 +40,12 @@ def generate_build_task(apks, tag):
 
     checkout = "git fetch origin && git reset --hard origin/master" if tag is None else "git fetch origin && git checkout %s" % (tag)
 
+    assemble_task = 'assembleNightly'
+
     if tag:
         # Non-tagged (nightly) builds should contain all languages
         checkout = checkout + ' && python tools/l10n/filter-release-translations.py'
+        assemble_task = 'assembleRelease'
 
 
     return taskcluster.slugId(), BUILDER.build_task(
@@ -48,7 +54,7 @@ def generate_build_task(apks, tag):
         command=(checkout +
                  ' && python tools/taskcluster/get-adjust-token.py'
                  ' && python tools/taskcluster/get-sentry-token.py'
-                 ' && ./gradlew --no-daemon clean test assembleRelease'),
+                 ' && ./gradlew --no-daemon clean test ' + assemble_task),
         features = {
             "chainOfTrust": True
         },
@@ -64,9 +70,12 @@ def generate_signing_task(build_task_id, apks, tag):
         artifacts.append("public/" + os.path.basename(apk))
 
     routes = []
+
+    signing_format = 'autograph_focus'
+
     scopes = [
         "project:mobile:focus:releng:signing:cert:release-signing",
-        "project:mobile:focus:releng:signing:format:focus-jar"
+        "project:mobile:focus:releng:signing:format:{}".format(signing_format),
     ]
 
     if tag:
@@ -82,6 +91,7 @@ def generate_signing_task(build_task_id, apks, tag):
         build_task_id,
         name="(Focus for Android) Signing task",
         description="Sign release builds of Focus/Klar",
+        signing_format=signing_format,
         apks=artifacts,
         scopes=scopes,
         routes=routes

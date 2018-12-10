@@ -9,7 +9,7 @@ import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.view.View;
 
-import org.mozilla.focus.session.Session;
+import mozilla.components.browser.session.Session;
 
 public interface IWebView {
     class HitTarget {
@@ -45,6 +45,8 @@ public interface IWebView {
         void onProgress(int progress);
 
         void onURLChanged(final String url);
+
+        void onTitleChanged(final String title);
 
         void onRequest(final boolean isTriggeredByUserGesture);
 
@@ -139,6 +141,8 @@ public interface IWebView {
     void setFindListener(IFindListener findListener);
 
     void loadData(String baseURL, String data, String mimeType, String encoding, String historyURL);
+
+    void releaseGeckoSession();
 
     /**
      * Get the title of the currently displayed website.

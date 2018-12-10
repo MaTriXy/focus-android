@@ -11,14 +11,12 @@ import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.text.TextUtils;
 import android.webkit.URLUtil;
-
-import org.mozilla.focus.Components;
+import mozilla.components.browser.search.SearchEngine;
+import org.mozilla.focus.browser.LocalizedContent;
+import org.mozilla.focus.ext.ContextKt;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-
-import mozilla.components.browser.search.SearchEngine;
-import org.mozilla.focus.browser.LocalizedContent;
 
 public class UrlUtils {
     public static String normalize(@NonNull String input) {
@@ -39,11 +37,8 @@ public class UrlUtils {
      */
     public static boolean isUrl(String url) {
         String trimmedUrl = url.trim();
-        if (trimmedUrl.contains(" ")) {
-            return false;
-        }
+        return !trimmedUrl.contains(" ") && (trimmedUrl.contains(".") || trimmedUrl.contains(":"));
 
-        return trimmedUrl.contains(".") || trimmedUrl.contains(":");
     }
 
     public static boolean isValidSearchQueryUrl(String url) {
@@ -60,21 +55,14 @@ public class UrlUtils {
     }
 
     public static boolean isHttpOrHttps(String url) {
-        if (TextUtils.isEmpty(url)) {
-            return false;
-        }
+        return !TextUtils.isEmpty(url) && (url.startsWith("http:") || url.startsWith("https:"));
 
-        return url.startsWith("http:") || url.startsWith("https:");
-    }
-
-    public static boolean isSearchQuery(String text) {
-        return text.contains(" ");
     }
 
     public static String createSearchUrl(Context context, String searchTerm) {
         final String defaultIdentifier = Settings.getInstance(context).getDefaultSearchEngineName();
 
-        final SearchEngine searchEngine = Components.INSTANCE.getSearchEngineManager()
+        final SearchEngine searchEngine = ContextKt.getComponents(context).getSearchEngineManager()
                 .getDefaultSearchEngine(context, defaultIdentifier);
 
         return searchEngine.buildSearchUrl(searchTerm);

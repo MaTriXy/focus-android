@@ -5,6 +5,8 @@
 
 package org.mozilla.focus.helpers;
 
+import android.content.Context;
+import android.content.res.Resources;
 import android.support.annotation.NonNull;
 import android.support.test.InstrumentationRegistry;
 import android.support.test.espresso.ViewInteraction;
@@ -13,6 +15,7 @@ import android.support.test.uiautomator.UiObject;
 import android.support.test.uiautomator.UiObjectNotFoundException;
 import android.support.test.uiautomator.UiSelector;
 import android.text.format.DateUtils;
+import android.util.DisplayMetrics;
 
 import org.mozilla.focus.R;
 import org.mozilla.focus.utils.AppConstants;
@@ -52,7 +55,7 @@ public final class TestHelper {
 
     // wait for web area to be visible
     public static void waitForWebContent() {
-        if (!AppConstants.isGeckoBuild()) {
+        if (!AppConstants.INSTANCE.isGeckoBuild()) {
             assertTrue(webView.waitForExists(waitingTime));
         } else {
             assertTrue(geckoView.waitForExists(waitingTime));
@@ -91,10 +94,18 @@ public final class TestHelper {
     public static UiObject browserURLbar = mDevice.findObject(new UiSelector()
             .resourceId(getAppName() + ":id/display_url")
             .clickable(true));
-
+    public static UiObject permAllowBtn = mDevice.findObject(new UiSelector()
+            .resourceId("com.android.packageinstaller:id/permission_allow_button")
+            .clickable(true));
     public static UiObject inlineAutocompleteEditText = mDevice.findObject(new UiSelector()
             .resourceId(getAppName() + ":id/urlView")
             .focused(true)
+            .enabled(true));
+    public static UiObject searchSuggestionsTitle = mDevice.findObject(new UiSelector()
+            .resourceId(getAppName() + ":id/enable_search_suggestions_title")
+            .enabled(true));
+    public static UiObject searchSuggestionsButtonYes = mDevice.findObject(new UiSelector()
+            .resourceId(getAppName() + ":id/enable_search_suggestions_button")
             .enabled(true));
     public static UiObject cleartextField = mDevice.findObject(new UiSelector()
             .resourceId(getAppName() + ":id/clearView")
@@ -102,6 +113,10 @@ public final class TestHelper {
     public static UiObject hint = mDevice.findObject(new UiSelector()
             .resourceId(getAppName() + ":id/searchView")
             .clickable(true));
+    public static UiObject suggestionList = mDevice.findObject(new UiSelector()
+            .resourceId(getAppName() + ":id/suggestionList"));
+    public static UiObject suggestion = mDevice.findObject(new UiSelector()
+            .resourceId(getAppName() + ":id/suggestion"));
     public static UiObject webView = mDevice.findObject(new UiSelector()
             .className("android.webkit.WebView")
             .enabled(true));
@@ -155,7 +170,8 @@ public final class TestHelper {
             .resourceId(getAppName() + ":id/addtohomescreen_dialog_add")
             .enabled(true));
     public static UiObject AddautoBtn = TestHelper.mDevice.findObject(new UiSelector()
-            .text("ADD AUTOMATICALLY")
+            .className("android.widget.Button")
+            .instance(1)
             .enabled(true));
     public static UiObject shortcutTitle = TestHelper.mDevice.findObject(new UiSelector()
             .resourceId(getAppName() + ":id/edit_title")
@@ -163,6 +179,32 @@ public final class TestHelper {
     public static UiObject savedNotification = TestHelper.mDevice.findObject(new UiSelector()
             .text("Download complete.")
             .resourceId("android:id/text")
+            .enabled(true));
+
+    public static UiObject securityInfoIcon = TestHelper.mDevice.findObject(new UiSelector()
+            .resourceId(TestHelper.getAppName() + ":id/security_info")
+            .enabled(true));
+    public static UiObject identityState = TestHelper.mDevice.findObject(new UiSelector()
+            .resourceId(TestHelper.getAppName() + ":id/site_identity_state")
+            .enabled(true));
+
+    public static UiObject downloadTitle = TestHelper.mDevice.findObject(new UiSelector()
+            .resourceId(TestHelper.getAppName() + ":id/title_template")
+            .enabled(true));
+    public static UiObject downloadFileName = TestHelper.mDevice.findObject(new UiSelector()
+            .resourceId(TestHelper.getAppName() + ":id/download_dialog_file_name")
+            .enabled(true));
+    public static UiObject downloadWarning = TestHelper.mDevice.findObject(new UiSelector()
+            .resourceId(TestHelper.getAppName() + ":id/download_dialog_warning")
+            .enabled(true));
+    public static UiObject downloadCancelBtn = TestHelper.mDevice.findObject(new UiSelector()
+            .resourceId(TestHelper.getAppName() + ":id/download_dialog_cancel")
+            .enabled(true));
+    public static UiObject downloadBtn = TestHelper.mDevice.findObject(new UiSelector()
+            .resourceId(TestHelper.getAppName() + ":id/download_dialog_download")
+            .enabled(true));
+    public static UiObject completedMsg = TestHelper.mDevice.findObject(new UiSelector()
+            .resourceId(TestHelper.getAppName() + ":id/snackbar_text")
             .enabled(true));
 
     /********* Main View Menu Item Locators ***********/
@@ -195,8 +237,8 @@ public final class TestHelper {
             .enabled(true));
 
     /********* Settings Menu Item Locators ***********/
-    public static UiObject settingsList = mDevice.findObject(new UiSelector()
-            .resourceId("android:id/list"));
+    public static UiObject settingsMenu = mDevice.findObject(new UiSelector()
+            .resourceId(getAppName() + ":id/recycler_view"));
     public static UiObject settingsHeading = mDevice.findObject(new UiSelector()
             .resourceId(getAppName() + ":id/toolbar")
             .enabled(true));
@@ -218,6 +260,25 @@ public final class TestHelper {
             }
             assertTrue(notificationOpenItem.exists());
         }
+    }
+
+    public static final int X_OFFSET = 20;
+    public static final int Y_OFFSET = 500;
+    public static final int STEPS = 10;
+
+    private static DisplayMetrics devicePixels() {
+        DisplayMetrics metrics = Resources.getSystem().getDisplayMetrics();
+        return metrics;
+    }
+
+    public static void swipeScreenLeft() {
+        DisplayMetrics metrics = devicePixels();
+        mDevice.swipe(metrics.widthPixels - X_OFFSET, Y_OFFSET, 0, Y_OFFSET, STEPS);
+    }
+
+    public static void swipeScreenRight() {
+        DisplayMetrics metrics = devicePixels();
+        mDevice.swipe(X_OFFSET, Y_OFFSET, metrics.widthPixels, Y_OFFSET, STEPS);
     }
 
     public static void waitForIdle() {
@@ -280,5 +341,13 @@ public final class TestHelper {
 
     public static void waitForWebSiteTitleLoad() {
         onWebView(withText("focus test page"));
+    }
+
+    public static void selectGeckoForKlar() {
+        InstrumentationRegistry.getTargetContext().getSharedPreferences("mozilla.components.service.fretboard.overrides",
+                Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean("use-gecko", AppConstants.INSTANCE.isKlarBuild())
+                .commit();
     }
 }

@@ -7,10 +7,10 @@ package org.mozilla.focus.search
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.preference.Preference
+import android.support.v7.preference.Preference
 import android.util.AttributeSet
-import org.mozilla.focus.Components
 import org.mozilla.focus.R
+import org.mozilla.focus.ext.components
 import org.mozilla.focus.utils.Settings
 
 /**
@@ -27,10 +27,10 @@ class SearchEnginePreference : Preference, SharedPreferences.OnSharedPreferenceC
         this.context = context
     }
 
-    override fun onAttachedToActivity() {
-        title = defaultSearchEngineName
+    override fun onAttached() {
+        summary = defaultSearchEngineName
         preferenceManager.sharedPreferences.registerOnSharedPreferenceChangeListener(this)
-        super.onAttachedToActivity()
+        super.onAttached()
     }
 
     override fun onPrepareForRemoval() {
@@ -40,12 +40,12 @@ class SearchEnginePreference : Preference, SharedPreferences.OnSharedPreferenceC
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences, key: String) {
         if (key == context.resources.getString(R.string.pref_key_search_engine)) {
-            title = defaultSearchEngineName
+            summary = defaultSearchEngineName
         }
     }
 
     private val defaultSearchEngineName: String
-        get() = Components.searchEngineManager.getDefaultSearchEngine(
+        get() = context.components.searchEngineManager.getDefaultSearchEngine(
                 getContext(),
                 Settings.getInstance(context).defaultSearchEngineName).name
 }

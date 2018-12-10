@@ -38,9 +38,19 @@
                     android:id="@+id/webview"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:scrollbarThumbVertical="@drawable/scrollbar_thumb" />
+                    android:focusable="true"
+                    android:focusableInTouchMode="true"
+                    android:scrollbarThumbVertical="@drawable/scrollbar_thumb"
+                    app:layout_behavior="@string/appbar_scrolling_view_behavior" />
 
             </android.support.v4.widget.SwipeRefreshLayout>
+
+            <FrameLayout
+                android:id="@+id/crash_container"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@color/photonRed50"
+                android:visibility="gone"/>
 
             <include
                 layout="@layout/browser_display_toolbar"/>
@@ -84,6 +94,7 @@
                 android:layout_width="match_parent"
                 android:layout_gravity="bottom"
                 android:visibility="gone"
+                app:layout_behavior="@string/appbar_scrolling_view_behavior"
                 app:layout_insetEdge="bottom"/>
         </org.mozilla.focus.widget.ResizableKeyboardCoordinatorLayout>
     </LinearLayout>

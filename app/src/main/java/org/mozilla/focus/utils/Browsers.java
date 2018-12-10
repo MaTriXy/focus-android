@@ -30,6 +30,7 @@ public class Browsers {
         FIREFOX_AURORA("org.mozilla.fennec_aurora"),
         FIREFOX_NIGHTLY("org.mozilla.fennec"),
         FIREFOX_ROCKET("org.mozilla.rocket"),
+        FIREFOX_FDROID("org.mozilla.fennec_fdroid"),
 
         CHROME("com.android.chrome"),
         CHROME_BETA("com.chrome.beta"),
@@ -99,6 +100,8 @@ public class Browsers {
             return browsers.get(KnownBrowser.FIREFOX_AURORA.packageName);
         } else if (browsers.containsKey(KnownBrowser.FIREFOX_NIGHTLY.packageName)) {
             return browsers.get(KnownBrowser.FIREFOX_NIGHTLY.packageName);
+        } else if (browsers.containsKey(KnownBrowser.FIREFOX_FDROID.packageName)) {
+            return browsers.get(KnownBrowser.FIREFOX_FDROID.packageName);
         }
         return null;
     }
@@ -190,14 +193,8 @@ public class Browsers {
      * Is (regular) the default browser of the user?
      */
     public boolean isFirefoxDefaultBrowser() {
-        if (defaultBrowser == null) {
-            return false;
-        }
+        return defaultBrowser != null && (defaultBrowser.packageName.equals(KnownBrowser.FIREFOX.packageName) || defaultBrowser.packageName.equals(KnownBrowser.FIREFOX_BETA.packageName) || defaultBrowser.packageName.equals(KnownBrowser.FIREFOX_AURORA.packageName) || defaultBrowser.packageName.equals(KnownBrowser.FIREFOX_NIGHTLY.packageName) || defaultBrowser.packageName.equals(KnownBrowser.FIREFOX_FDROID.packageName));
 
-        return defaultBrowser.packageName.equals(KnownBrowser.FIREFOX.packageName)
-                || defaultBrowser.packageName.equals(KnownBrowser.FIREFOX_BETA.packageName)
-                || defaultBrowser.packageName.equals(KnownBrowser.FIREFOX_AURORA.packageName)
-                || defaultBrowser.packageName.equals(KnownBrowser.FIREFOX_NIGHTLY.packageName);
     }
 
     public @Nullable ActivityInfo getDefaultBrowser() {
@@ -236,6 +233,11 @@ public class Browsers {
     public boolean isDefaultBrowser(Context context) {
         return defaultBrowser != null && context.getPackageName().equals(defaultBrowser.packageName);
 
+    }
+
+    // Does the user have any browser as their default?
+    public boolean hasDefaultBrowser(Context context) {
+        return defaultBrowser != null;
     }
 
     public ActivityInfo[] getInstalledBrowsers() {

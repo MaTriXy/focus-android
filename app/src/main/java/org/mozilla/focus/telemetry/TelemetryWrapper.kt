@@ -10,19 +10,23 @@ package org.mozilla.focus.telemetry
 
 import android.content.Context
 import android.net.http.SslError
+import android.os.Build
 import android.os.StrictMode
 import android.preference.PreferenceManager
 import android.support.annotation.CheckResult
-import kotlinx.coroutines.experimental.runBlocking
-import mozilla.components.ui.autocomplete.InlineAutocompleteEditText.AutocompleteResult
+import android.support.annotation.VisibleForTesting
+import kotlinx.coroutines.runBlocking
+import mozilla.components.ui.autocomplete.InlineAutocompleteEditText
 import org.json.JSONObject
 import org.mozilla.focus.BuildConfig
-import org.mozilla.focus.Components
 import org.mozilla.focus.R
+import org.mozilla.focus.ext.components
 import org.mozilla.focus.search.CustomSearchEngineStore
-import org.mozilla.focus.session.SessionManager
 import org.mozilla.focus.utils.AppConstants
+import org.mozilla.focus.utils.MobileMetricsPingStorage
 import org.mozilla.focus.utils.Settings
+import org.mozilla.focus.utils.UrlUtils
+import org.mozilla.focus.utils.activeExperimentNames
 import org.mozilla.telemetry.Telemetry
 import org.mozilla.telemetry.TelemetryHolder
 import org.mozilla.telemetry.config.TelemetryConfiguration
@@ -36,9 +40,11 @@ import org.mozilla.telemetry.ping.TelemetryMobileMetricsPingBuilder
 import org.mozilla.telemetry.schedule.jobscheduler.JobSchedulerTelemetryScheduler
 import org.mozilla.telemetry.serialize.JSONPingSerializer
 import org.mozilla.telemetry.storage.FileTelemetryStorage
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.collections.HashSet
 
 @Suppress(
         // Yes, this a large class with a lot of functions. But it's very simple and still easy to read.
@@ -55,12 +61,17 @@ object TelemetryWrapper {
 
     private const val MAXIMUM_CUSTOM_TAB_EXTRAS = 10
 
+    private const val HISTOGRAM_SIZE = 200
+    private const val BUCKET_SIZE_MS = 100
+    private const val HISTOGRAM_MIN_INDEX = 0
+
     private val isEnabledByDefault: Boolean
-        get() = !AppConstants.isKlarBuild()
+        get() = !AppConstants.isKlarBuild
 
     private object Category {
         val ACTION = "action"
         val ERROR = "error"
+        val HISTOGRAM = "histogram"
     }
 
     private object Method {
@@ -86,6 +97,7 @@ object TelemetryWrapper {
         val HIDE = "hide"
         val SHARE_INTENT = "share_intent"
         val REMOVE = "remove"
+        val REMOVE_ALL = "remove_all"
         val REORDER = "reorder"
         val RESTORE = "restore"
         val PAGE = "page"
@@ -121,6 +133,12 @@ object TelemetryWrapper {
         val ADD_SEARCH_ENGINE_LEARN_MORE = "search_engine_learn_more"
         val CUSTOM_SEARCH_ENGINE = "custom_search_engine"
         val REMOVE_SEARCH_ENGINES = "remove_search_engines"
+        val GECKO_ENGINE = "gecko_engine"
+        val TIP = "tip"
+        val SEARCH_SUGGESTION_PROMPT = "search_suggestion_prompt"
+        val MAKE_DEFAULT_BROWSER_OPEN_WITH = "make_default_browser_open_with"
+        val MAKE_DEFAULT_BROWSER_SETTINGS = "make_default_browser_settings"
+        val ALLOWLIST = "allowlist"
     }
 
     private object Value {
@@ -152,6 +170,12 @@ object TelemetryWrapper {
         val SETTINGS = "settings"
         val QUICK_ADD = "quick_add"
         val FIND_IN_PAGE = "find_in_page"
+        val DEFAULT_BROWSER_TIP = "default_browser_tip"
+        val DISABLE_TRACKING_PROTECTION_TIP = "disable_tracking_protection_tip"
+        val ADD_TO_HOMESCREEN_TIP = "add_to_homescreen_tip"
+        val AUTOCOMPLETE_URL_TIP = "autocomplete_url_tip"
+        val OPEN_IN_NEW_TAB_TIP = "open_in_new_tab_tip"
+        val DISABLE_TIPS_TIP = "disable_tips_tip"
     }
 
     private object Extra {
@@ -164,21 +188,23 @@ object TelemetryWrapper {
         val SOURCE = "source"
         val SUCCESS = "success"
         val ERROR_CODE = "error_code"
-        val AVERAGE = "average"
+        val SEARCH_SUGGESTION = "search_suggestion"
+        val TOTAL_URI_COUNT = "total_uri_count"
+        val UNIQUE_DOMAINS_COUNT = "unique_domains_count"
     }
 
-    enum class BrowserContextMenuValue {
-        Link, Image, ImageWithLink;
+    enum class BrowserContextMenuValue(val value: String) {
+        Link(Value.LINK),
+        Image(Value.IMAGE),
+        ImageWithLink(Value.IMAGE_WITH_LINK);
 
-        override fun toString(): String = when (this) {
-            Link -> Value.LINK
-            Image -> Value.IMAGE
-            ImageWithLink -> Value.IMAGE_WITH_LINK
-        }
+        override fun toString(): String = value
     }
 
     @JvmStatic
     fun isTelemetryEnabled(context: Context): Boolean {
+        if (isDeviceWithTelemetryDisabled()) { return false }
+
         // The first access to shared preferences will require a disk read.
         val threadPolicy = StrictMode.allowThreadDiskReads()
         try {
@@ -186,24 +212,10 @@ object TelemetryWrapper {
             val preferences = PreferenceManager.getDefaultSharedPreferences(context)
 
             return preferences.getBoolean(
-                    resources.getString(R.string.pref_key_telemetry), isEnabledByDefault) && !AppConstants.isDevBuild()
+                    resources.getString(R.string.pref_key_telemetry), isEnabledByDefault) && !AppConstants.isDevBuild
         } finally {
             StrictMode.setThreadPolicy(threadPolicy)
         }
-    }
-
-    @JvmStatic
-    fun setTelemetryEnabled(context: Context, enabled: Boolean) {
-        val resources = context.resources
-        val preferences = PreferenceManager.getDefaultSharedPreferences(context)
-
-        preferences.edit()
-                .putBoolean(resources.getString(R.string.pref_key_telemetry), enabled)
-                .apply()
-
-        TelemetryHolder.get()
-                .configuration
-                .setUploadEnabled(enabled).isCollectionEnabled = enabled
     }
 
     @JvmStatic
@@ -218,7 +230,7 @@ object TelemetryWrapper {
 
             val configuration = TelemetryConfiguration(context)
                     .setServerEndpoint("https://incoming.telemetry.mozilla.org")
-                    .setAppName(if (AppConstants.isKlarBuild()) TELEMETRY_APP_NAME_KLAR else TELEMETRY_APP_NAME_FOCUS)
+                    .setAppName(if (AppConstants.isKlarBuild) TELEMETRY_APP_NAME_KLAR else TELEMETRY_APP_NAME_FOCUS)
                     .setUpdateChannel(BuildConfig.BUILD_TYPE)
                     .setPreferencesImportantForTelemetry(
                             resources.getString(R.string.pref_key_search_engine),
@@ -233,13 +245,18 @@ object TelemetryWrapper {
                             resources.getString(R.string.pref_key_secure),
                             resources.getString(R.string.pref_key_default_browser),
                             resources.getString(R.string.pref_key_autocomplete_preinstalled),
-                            resources.getString(R.string.pref_key_autocomplete_custom))
+                            resources.getString(R.string.pref_key_autocomplete_custom),
+                            resources.getString(R.string.pref_key_remote_debugging),
+                            resources.getString(R.string.pref_key_homescreen_tips),
+                            resources.getString(R.string.pref_key_open_new_tab),
+                            resources.getString(R.string.pref_key_show_search_suggestions),
+                            resources.getString(R.string.pref_key_fretboard_bucket_number))
                     .setSettingsProvider(TelemetrySettingsProvider(context))
                     .setCollectionEnabled(telemetryEnabled)
                     .setUploadEnabled(telemetryEnabled)
                     .setBuildId(TelemetryConfiguration(context).buildId +
-                    (if (AppConstants.isGeckoBuild())
-                        ("-" + TELEMETRY_APP_ENGINE_GECKOVIEW) else ""))
+                    (if (AppConstants.isGeckoBuild)
+                        ("-$TELEMETRY_APP_ENGINE_GECKOVIEW") else ""))
 
             val serializer = JSONPingSerializer()
             val storage = FileTelemetryStorage(configuration, serializer)
@@ -249,7 +266,27 @@ object TelemetryWrapper {
             TelemetryHolder.set(Telemetry(configuration, storage, client, scheduler)
                     .addPingBuilder(TelemetryCorePingBuilder(configuration))
                     .addPingBuilder(TelemetryEventPingBuilder(configuration))
+                    .also {
+                        if (!dayPassedSinceLastUpload(context)) return@also
+
+                        runBlocking {
+                            val metricsStorage = MobileMetricsPingStorage(context)
+                            val mobileMetrics = metricsStorage.load() ?: JSONObject()
+                            metricsStorage.clearStorage()
+
+                            it.addPingBuilder(TelemetryMobileMetricsPingBuilder(mobileMetrics,
+                                    configuration))
+                        }
+
+                        // Record new edited date
+                        PreferenceManager.getDefaultSharedPreferences(context)
+                                .edit()
+                                .putLong(LAST_MOBILE_METRICS_PINGS, (dateFormat.format(Date()).toLong()))
+                                .apply()
+                    }
                     .setDefaultSearchProvider(createDefaultSearchProvider(context)))
+
+            TelemetryWrapper.recordActiveExperiments(context)
         } finally {
             StrictMode.setThreadPolicy(threadPolicy)
         }
@@ -269,10 +306,16 @@ object TelemetryWrapper {
      */
     @CheckResult
     private fun withSessionCounts(event: TelemetryEvent): TelemetryEvent {
-        val sessionManager = SessionManager.getInstance()
+        val context = TelemetryHolder.get().configuration.context
 
-        event.extra(Extra.SELECTED, sessionManager.positionOfCurrentSession.toString())
-        event.extra(Extra.TOTAL, sessionManager.numberOfSessions.toString())
+        val sessionManager = context.components.sessionManager
+        val sessions = sessionManager.sessions
+        val selectedSession = sessionManager.selectedSession
+
+        val positionOfSelectedSession = sessions.indexOf(selectedSession)
+
+        event.extra(Extra.SELECTED, positionOfSelectedSession.toString())
+        event.extra(Extra.TOTAL, sessions.size.toString())
 
         return event
     }
@@ -284,43 +327,49 @@ object TelemetryWrapper {
         TelemetryEvent.create(Category.ACTION, Method.FOREGROUND, Object.APP).queue()
     }
 
-    private var numLoads: Int = 0
-    private var averageTime: Double = 0.0
+    @VisibleForTesting var histogram = IntArray(HISTOGRAM_SIZE)
+    @VisibleForTesting var domainMap = HashSet<String>()
+    @VisibleForTesting var numUri = 0
 
     @JvmStatic
-    fun addLoadToAverage(newLoadTime: Long) {
-        numLoads++
-        averageTime += (newLoadTime - averageTime) / numLoads
-    }
+    fun addLoadToHistogram(url: String, newLoadTime: Long) {
+        domainMap.add(UrlUtils.stripCommonSubdomains(URL(url).host))
+        numUri++
+        var histogramLoadIndex = (newLoadTime / BUCKET_SIZE_MS).toInt()
 
-    @JvmStatic
-    private fun resetAverageLoad() {
-        numLoads = 0
-        averageTime = 0.0
-    }
+        if (histogramLoadIndex > (HISTOGRAM_SIZE - 2)) {
+            histogramLoadIndex = HISTOGRAM_SIZE - 1
+        } else if (histogramLoadIndex < HISTOGRAM_MIN_INDEX) {
+            histogramLoadIndex = HISTOGRAM_MIN_INDEX
+        }
 
-    @JvmStatic
-    fun addMobileMetricsPing(mobileMetrics: JSONObject) {
-        val telemetry = TelemetryHolder.get()
-        telemetry.addPingBuilder(TelemetryMobileMetricsPingBuilder(mobileMetrics,
-                telemetry.configuration))
-        telemetry.queuePing(TelemetryMobileMetricsPingBuilder.TYPE)
-        // Record new edited date
-        PreferenceManager.getDefaultSharedPreferences(telemetry.configuration.context)
-                .edit()
-                .putLong(LAST_MOBILE_METRICS_PINGS, (dateFormat.format(Date()).toLong()))
-                .apply()
+        histogram[histogramLoadIndex]++
     }
 
     @JvmStatic
     fun stopSession() {
         TelemetryHolder.get().recordSessionEnd()
 
-        if (numLoads > 0) {
-            TelemetryEvent.create(Category.ACTION, Method.FOREGROUND, Object.BROWSER)
-                    .extra(Extra.AVERAGE, averageTime.toString()).queue()
-            resetAverageLoad()
+        val histogramEvent = TelemetryEvent.create(Category.HISTOGRAM, Method.FOREGROUND, Object.BROWSER)
+        for (bucketIndex in histogram.indices) {
+            histogramEvent.extra((bucketIndex * BUCKET_SIZE_MS).toString(), histogram[bucketIndex].toString())
         }
+        histogramEvent.queue()
+
+        // Clear histogram array after queueing it
+        histogram = IntArray(HISTOGRAM_SIZE)
+
+        TelemetryEvent.create(Category.ACTION, Method.OPEN, Object.BROWSER).extra(
+                Extra.UNIQUE_DOMAINS_COUNT,
+                domainMap.size.toString()
+        ).queue()
+        domainMap.clear()
+
+        TelemetryEvent.create(Category.ACTION, Method.OPEN, Object.BROWSER).extra(
+                Extra.TOTAL_URI_COUNT,
+                numUri.toString()
+        ).queue()
+        numUri = 0
 
         TelemetryEvent.create(Category.ACTION, Method.BACKGROUND, Object.APP).queue()
     }
@@ -330,11 +379,12 @@ object TelemetryWrapper {
         TelemetryHolder.get()
                 .queuePing(TelemetryCorePingBuilder.TYPE)
                 .queuePing(TelemetryEventPingBuilder.TYPE)
+                .queuePing(TelemetryMobileMetricsPingBuilder.TYPE)
                 .scheduleUpload()
     }
 
     @JvmStatic
-    fun urlBarEvent(isUrl: Boolean, autocompleteResult: AutocompleteResult) {
+    fun urlBarEvent(isUrl: Boolean, autocompleteResult: InlineAutocompleteEditText.AutocompleteResult) {
         if (isUrl) {
             TelemetryWrapper.browseEvent(autocompleteResult)
         } else {
@@ -342,7 +392,7 @@ object TelemetryWrapper {
         }
     }
 
-    private fun browseEvent(autocompleteResult: AutocompleteResult) {
+    private fun browseEvent(autocompleteResult: InlineAutocompleteEditText.AutocompleteResult) {
         val event = TelemetryEvent.create(Category.ACTION, Method.TYPE_URL, Object.SEARCH_BAR)
                 .extra(Extra.AUTOCOMPLETE, (!autocompleteResult.isEmpty).toString())
 
@@ -430,10 +480,13 @@ object TelemetryWrapper {
     }
 
     @JvmStatic
-    fun searchSelectEvent() {
+    fun searchSelectEvent(isSearchSuggestion: Boolean) {
         val telemetry = TelemetryHolder.get()
 
-        TelemetryEvent.create(Category.ACTION, Method.TYPE_SELECT_QUERY, Object.SEARCH_BAR).queue()
+        TelemetryEvent
+                .create(Category.ACTION, Method.TYPE_SELECT_QUERY, Object.SEARCH_BAR)
+                .extra(Extra.SEARCH_SUGGESTION, "$isSearchSuggestion")
+                .queue()
 
         val searchEngineIdentifier = getDefaultSearchEngineIdentifierForTelemetry(telemetry.configuration.context)
 
@@ -441,9 +494,9 @@ object TelemetryWrapper {
     }
 
     private fun getDefaultSearchEngineIdentifierForTelemetry(context: Context): String {
-        val searchEngine = Components.searchEngineManager.getDefaultSearchEngine(
-                context,
-                Settings.getInstance(context).defaultSearchEngineName
+        val searchEngine = context.components.searchEngineManager.getDefaultSearchEngine(
+            context,
+            Settings.getInstance(context).defaultSearchEngineName
         ).identifier
 
         return if (CustomSearchEngineStore.isCustomSearchEngine(searchEngine, context)) {
@@ -520,6 +573,12 @@ object TelemetryWrapper {
     }
 
     @JvmStatic
+    fun eraseAndOpenShortcutEvent() {
+        withSessionCounts(TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.SHORTCUT, Value.ERASE_AND_OPEN))
+            .queue()
+    }
+
+    @JvmStatic
     fun eraseTaskRemoved() {
         withSessionCounts(TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.RECENT_APPS, Value.ERASE))
                 .queue()
@@ -566,6 +625,19 @@ object TelemetryWrapper {
     fun openLinkInNewTabEvent() {
         withSessionCounts(TelemetryEvent.create(Category.ACTION, Method.OPEN, Object.BROWSER_CONTEXTMENU, Value.TAB))
                 .queue()
+    }
+
+    @JvmStatic
+    fun openLinkInFullBrowserFromCustomTabEvent() {
+        withSessionCounts(
+            TelemetryEvent.create(
+                Category.ACTION,
+                Method.OPEN,
+                Object.BROWSER_CONTEXTMENU,
+                Value.FULL_BROWSER
+            )
+        )
+            .queue()
     }
 
     @JvmStatic
@@ -624,6 +696,23 @@ object TelemetryWrapper {
                 Object.BLOCKING_SWITCH,
                 isBlockingEnabled.toString()
         ).queue()
+    }
+
+    @JvmStatic
+    fun openExceptionsListSetting() {
+        TelemetryEvent.create(Category.ACTION, Method.OPEN, Object.ALLOWLIST).queue()
+    }
+
+    fun removeExceptionDomains(count: Int) {
+        TelemetryEvent.create(Category.ACTION, Method.REMOVE, Object.ALLOWLIST)
+            .extra(Extra.TOTAL, count.toString())
+            .queue()
+    }
+
+    fun removeAllExceptionDomains(count: Int) {
+        TelemetryEvent.create(Category.ACTION, Method.REMOVE_ALL, Object.ALLOWLIST)
+            .extra(Extra.TOTAL, count.toString())
+            .queue()
     }
 
     @JvmStatic
@@ -796,8 +885,35 @@ object TelemetryWrapper {
     }
 
     @JvmStatic
+    fun changeToGeckoEngineEvent() {
+        TelemetryEvent.create(Category.ACTION, Method.CHANGE, Object.GECKO_ENGINE).queue()
+    }
+
+    @JvmStatic
+    fun recordActiveExperiments(context: Context) {
+        TelemetryHolder.get().recordActiveExperiments(context.activeExperimentNames)
+    }
+
+    @JvmStatic
     fun reportSiteIssueEvent() {
         TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.MENU, Value.REPORT_ISSUE).queue()
+    }
+
+    @JvmStatic
+    fun respondToSearchSuggestionPrompt(enable: Boolean) {
+        TelemetryEvent
+                .create(Category.ACTION, Method.CLICK, Object.SEARCH_SUGGESTION_PROMPT, "$enable")
+                .queue()
+    }
+
+    @JvmStatic
+    fun makeDefaultBrowserOpenWith() {
+        TelemetryEvent.create(Category.ACTION, Method.SHOW, Object.MAKE_DEFAULT_BROWSER_OPEN_WITH).queue()
+    }
+
+    @JvmStatic
+    fun makeDefaultBrowserSettings() {
+        TelemetryEvent.create(Category.ACTION, Method.SHOW, Object.MAKE_DEFAULT_BROWSER_SETTINGS).queue()
     }
 
     @JvmStatic
@@ -807,5 +923,49 @@ object TelemetryWrapper {
         // Make sure a minimum of 1 day has passed since we collected data
         val currentDateLong = dateFormat.format(Date()).toLong()
         return currentDateLong > dateOfLastPing
+    }
+
+    @JvmStatic
+    fun displayTipEvent(tipId: Int) {
+
+        val telemetryValue = when (tipId) {
+            R.string.tip_open_in_new_tab -> Value.OPEN_IN_NEW_TAB_TIP
+            R.string.tip_add_to_homescreen -> Value.ADD_TO_HOMESCREEN_TIP
+            R.string.tip_disable_tracking_protection -> Value.DISABLE_TRACKING_PROTECTION_TIP
+            R.string.tip_set_default_browser -> Value.DEFAULT_BROWSER_TIP
+            R.string.tip_autocomplete_url -> Value.AUTOCOMPLETE_URL_TIP
+            R.string.tip_disable_tips2 -> Value.DISABLE_TIPS_TIP
+            else -> {
+                // Unknown tip, fail silently rather than crashing.
+                return
+            }
+        }
+
+        TelemetryEvent.create(Category.ACTION, Method.SHOW, Object.TIP, telemetryValue).queue()
+    }
+
+    @JvmStatic
+    fun pressTipEvent(tipId: Int) {
+
+        val telemetryValue = when (tipId) {
+            R.string.tip_open_in_new_tab -> Value.OPEN_IN_NEW_TAB_TIP
+            R.string.tip_add_to_homescreen -> Value.ADD_TO_HOMESCREEN_TIP
+            R.string.tip_set_default_browser -> Value.DEFAULT_BROWSER_TIP
+            R.string.tip_autocomplete_url -> Value.AUTOCOMPLETE_URL_TIP
+            R.string.tip_disable_tips2 -> Value.DISABLE_TIPS_TIP
+            else -> {
+                // Unknown tip, fail silently rather than crashing.
+                return
+            }
+        }
+
+        TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.TIP, telemetryValue).queue()
+    }
+
+    private fun isDeviceWithTelemetryDisabled(): Boolean {
+        val brand = "blackberry"
+        val device = "bbf100"
+
+        return Build.BRAND == brand && Build.DEVICE == device
     }
 }

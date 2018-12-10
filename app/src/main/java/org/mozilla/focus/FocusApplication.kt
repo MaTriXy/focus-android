@@ -6,57 +6,101 @@
 package org.mozilla.focus
 
 import android.os.StrictMode
-import android.preference.PreferenceManager
-import kotlinx.coroutines.experimental.CommonPool
-import kotlinx.coroutines.experimental.launch
+import android.support.v7.preference.PreferenceManager
+import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import mozilla.components.service.fretboard.Fretboard
+import mozilla.components.service.fretboard.source.kinto.KintoExperimentSource
+import mozilla.components.service.fretboard.storage.flatfile.FlatFileExperimentStorage
+import mozilla.components.support.base.log.Log
+import mozilla.components.support.base.log.sink.AndroidLogSink
 import org.mozilla.focus.locale.LocaleAwareApplication
 import org.mozilla.focus.session.NotificationSessionObserver
-import org.mozilla.focus.session.SessionManager
 import org.mozilla.focus.session.VisibilityLifeCycleCallback
+import org.mozilla.focus.telemetry.CrashReporterWrapper
 import org.mozilla.focus.telemetry.TelemetrySessionObserver
 import org.mozilla.focus.telemetry.TelemetryWrapper
 import org.mozilla.focus.utils.AdjustHelper
 import org.mozilla.focus.utils.AppConstants
+import org.mozilla.focus.utils.EXPERIMENTS_BASE_URL
+import org.mozilla.focus.utils.EXPERIMENTS_BUCKET_NAME
+import org.mozilla.focus.utils.EXPERIMENTS_COLLECTION_NAME
+import org.mozilla.focus.utils.EXPERIMENTS_JSON_FILENAME
+import org.mozilla.focus.utils.StethoWrapper
 import org.mozilla.focus.web.CleanupSessionObserver
+import org.mozilla.focus.web.WebViewProvider
+import java.io.File
 
 class FocusApplication : LocaleAwareApplication() {
+    lateinit var fretboard: Fretboard
+
+    companion object {
+        private const val FRETBOARD_BLOCKING_NETWORK_READ_TIMEOUT = 10000L
+    }
+
+    val components: Components by lazy { Components() }
+
     var visibilityLifeCycleCallback: VisibilityLifeCycleCallback? = null
         private set
 
     override fun onCreate() {
         super.onCreate()
 
+        Log.addSink(AndroidLogSink("Focus"))
+        CrashReporterWrapper.init(this)
+
+        StethoWrapper.init(this)
+
         PreferenceManager.setDefaultValues(this, R.xml.settings, false)
 
-        enableStrictMode()
+        runBlocking {
+            loadExperiments()
 
-        Components.searchEngineManager.apply {
-            launch(CommonPool) {
-                load(this@FocusApplication)
+            enableStrictMode()
+
+            components.searchEngineManager.apply {
+                launch(IO) {
+                    load(this@FocusApplication)
+                }
+
+                registerForLocaleUpdates(this@FocusApplication)
             }
 
-            registerForLocaleUpdates(this@FocusApplication)
+            TelemetryWrapper.init(this@FocusApplication)
+            AdjustHelper.setupAdjustIfNeeded(this@FocusApplication)
+
+            visibilityLifeCycleCallback = VisibilityLifeCycleCallback(this@FocusApplication)
+            registerActivityLifecycleCallbacks(visibilityLifeCycleCallback)
+
+            components.sessionManager.apply {
+                register(NotificationSessionObserver(this@FocusApplication))
+                register(TelemetrySessionObserver())
+                register(CleanupSessionObserver(this@FocusApplication))
+            }
         }
+    }
 
-        TelemetryWrapper.init(this)
-        AdjustHelper.setupAdjustIfNeeded(this)
-
-        visibilityLifeCycleCallback = VisibilityLifeCycleCallback(this)
-        registerActivityLifecycleCallbacks(visibilityLifeCycleCallback)
-
-        val sessions = SessionManager.getInstance().sessions
-        sessions.observeForever(NotificationSessionObserver(this))
-        sessions.observeForever(TelemetrySessionObserver())
-        sessions.observeForever(CleanupSessionObserver(this))
-
-        val customTabSessions = SessionManager.getInstance().customTabSessions
-        customTabSessions.observeForever(TelemetrySessionObserver())
+    private suspend fun loadExperiments() = coroutineScope {
+        val experimentsFile = File(filesDir, EXPERIMENTS_JSON_FILENAME)
+        val experimentSource = KintoExperimentSource(
+                EXPERIMENTS_BASE_URL, EXPERIMENTS_BUCKET_NAME, EXPERIMENTS_COLLECTION_NAME)
+        fretboard = Fretboard(experimentSource, FlatFileExperimentStorage(experimentsFile))
+        fretboard.loadExperiments()
+        WebViewProvider.determineEngine(this@FocusApplication)
+        launch(IO) {
+            withTimeoutOrNull(FRETBOARD_BLOCKING_NETWORK_READ_TIMEOUT) {
+                fretboard.updateExperiments() // then update disk and memory from the network
+            }
+        }
     }
 
     private fun enableStrictMode() {
         // Android/WebView sometimes commit strict mode violations, see e.g.
         // https://github.com/mozilla-mobile/focus-android/issues/660
-        if (AppConstants.isReleaseBuild()) {
+        if (AppConstants.isReleaseBuild) {
             return
         }
 

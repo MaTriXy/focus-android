@@ -9,6 +9,7 @@ import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.support.v4.content.ContextCompat
+import android.text.TextUtils
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -16,60 +17,57 @@ import android.webkit.URLUtil
 import android.widget.ImageView
 import android.widget.PopupWindow
 import android.widget.TextView
+import mozilla.components.browser.session.Session
 import mozilla.components.support.ktx.android.graphics.drawable.toBitmap
 import mozilla.components.support.utils.DrawableUtils
 import org.mozilla.focus.R
-import org.mozilla.focus.session.Session
 import java.net.MalformedURLException
 import java.net.URL
 
 object PopupUtils {
 
     fun createSecurityPopup(context: Context, session: Session): PopupWindow? {
-        if (session.secure.value != null) {
-            val isSecure = session.secure.value
-            val url = session.url.value
-            val res = context.resources
+        val isSecure = session.securityInfo.secure
+        val url = session.url
+        val res = context.resources
 
-            val inflater = LayoutInflater.from(context)
-            val popUpView = inflater.inflate(R.layout.security_popup, null)
-            val origin = session.securityOrigin.value
-            val verifierInfo = session.securityVerifier.value
-            val hostInfo = popUpView.findViewById<TextView>(R.id.site_identity_title)
-            val securityInfoIcon = popUpView.findViewById<ImageView>(R.id.site_identity_icon)
-            val verifier = popUpView.findViewById<TextView>(R.id.verifier)
+        val inflater = LayoutInflater.from(context)
+        val popUpView = inflater.inflate(R.layout.security_popup, null)
+        val origin = session.securityInfo.host
+        val verifierInfo = session.securityInfo.issuer
+        val hostInfo = popUpView.findViewById<TextView>(R.id.site_identity_title)
+        val securityInfoIcon = popUpView.findViewById<ImageView>(R.id.site_identity_icon)
+        val verifier = popUpView.findViewById<TextView>(R.id.verifier)
 
-            setOrigin(hostInfo, origin, url)
+        setOrigin(hostInfo, origin, url)
 
-            val identityState = popUpView.findViewById<TextView>(R.id.site_identity_state)
-            identityState.setText(
-                if (isSecure)
-                    R.string.security_popup_secure_connection
-                else
-                    R.string.security_popup_insecure_connection)
+        val identityState = popUpView.findViewById<TextView>(R.id.site_identity_state)
+        identityState.setText(
+            if (isSecure)
+                R.string.security_popup_secure_connection
+            else
+                R.string.security_popup_insecure_connection)
 
-            if (isSecure) {
-                setSecurityInfoSecure(context, identityState, verifierInfo, verifier,
-                    securityInfoIcon)
-            } else {
-                verifier.visibility = View.GONE
-                setSecurityInfoInsecure(context, identityState, url, securityInfoIcon)
-            }
-
-            identityState.compoundDrawablePadding = res.getDimension(
-                R.dimen.doorhanger_drawable_padding).toInt()
-
-            return PopupWindow(popUpView, res.getDimension(R.dimen.doorhanger_width).toInt(),
-                ViewGroup.LayoutParams.WRAP_CONTENT, true)
+        if (isSecure) {
+            setSecurityInfoSecure(context, identityState, verifierInfo, verifier,
+                securityInfoIcon)
+        } else {
+            verifier.visibility = View.GONE
+            setSecurityInfoInsecure(context, identityState, url, securityInfoIcon)
         }
-        return null
+
+        identityState.compoundDrawablePadding = res.getDimension(
+            R.dimen.doorhanger_drawable_padding).toInt()
+
+        return PopupWindow(popUpView, res.getDimension(R.dimen.doorhanger_width).toInt(),
+            ViewGroup.LayoutParams.WRAP_CONTENT, true)
     }
 
     private fun setOrigin(hostInfo: TextView, origin: String?, url: String) {
-        if (origin != null) {
-            hostInfo.text = origin
+        hostInfo.text = if (!TextUtils.isEmpty(origin)) {
+            origin
         } else {
-            hostInfo.text = try {
+            try {
                 URL(url).host
             } catch (e: MalformedURLException) {
                 url
@@ -90,7 +88,7 @@ object PopupUtils {
             getScaledDrawable(context, R.dimen.doorhanger_small_icon, checkIcon), null,
             null, null)
         identityState.setTextColor(photonGreen)
-        if (verifierInfo != null) {
+        if (!TextUtils.isEmpty(verifierInfo)) {
             verifier.text = context.getString(R.string.security_popup_security_verified,
                 verifierInfo)
             verifier.visibility = View.VISIBLE

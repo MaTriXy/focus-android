@@ -38,7 +38,7 @@ RUN cd /opt && rm -f android-sdk.tgz
 
 ENV ANDROID_SDK_HOME /opt/android-sdk-linux
 ENV ANDROID_HOME /opt/android-sdk-linux
-ENV PATH ${PATH}:${ANDROID_SDK_HOME}/tools:${ANDROID_SDK_HOME}/platform-tools:/opt/tools:${ANDROID_SDK_HOME}/build-tools/27.0.3
+ENV PATH ${PATH}:${ANDROID_SDK_HOME}/tools:${ANDROID_SDK_HOME}/platform-tools:/opt/tools:${ANDROID_SDK_HOME}/build-tools/28.0.3
 
 # Platform tools
 RUN echo y | android update sdk --no-ui --all --filter platform-tools | grep 'package installed'
@@ -46,10 +46,13 @@ RUN echo y | android update sdk --no-ui --all --filter platform-tools | grep 'pa
 # Android 8.0 / SDK 26
 RUN echo y | android update sdk --no-ui --all --filter android-26 | grep 'package installed'
 RUN echo y | android update sdk --no-ui --all --filter android-27 | grep 'package installed'
+RUN echo y | android update sdk --no-ui --all --filter android-28 | grep 'package installed'
 
 # Build tools 26.0.1
 RUN echo y | android update sdk --no-ui --all --filter build-tools-26.0.1 | grep 'package installed'
 RUN echo y | android update sdk --no-ui --all --filter build-tools-27.0.3 | grep 'package installed'
+RUN echo y | android update sdk --no-ui --all --filter build-tools-28.0.2 | grep 'package installed'
+RUN echo y | android update sdk --no-ui --all --filter build-tools-28.0.3 | grep 'package installed'
 
 # Extras
 RUN echo y | android update sdk --no-ui --all --filter extra-android-m2repository | grep 'package installed'
@@ -91,7 +94,7 @@ RUN git clone https://github.com/mozilla-mobile/focus-android.git
 
 # Build project and run gradle tasks once to pull all dependencies
 WORKDIR /opt/focus-android
-RUN ./gradlew --no-daemon assemble testFocusWebviewDebugUnitTest lint pmd checkstyle spotbugs detektCheck ktlint
+RUN ./gradlew --no-daemon assemble testFocusX86DebugUnitTest lint pmd checkstyle spotbugs detektCheck ktlint
 
 # -- Post setup -------------------------------------------------------------------------
 
@@ -99,7 +102,10 @@ RUN ./gradlew --no-daemon assemble testFocusWebviewDebugUnitTest lint pmd checks
 RUN pip install -r tools/l10n/android2po/requirements.txt
 
 # Install taskcluster python library (used by decision tasks)
-RUN pip install taskcluster
+# 5.0.0 is still incompatible with taskclusterProxy, meaning no decision task is able
+# to schedule the rest of the Taskcluster tasks. Please upgrade to taskcluster>=5 once
+# https://bugzilla.mozilla.org/show_bug.cgi?id=1460015 is fixed
+RUN pip install 'taskcluster>=4,<5'
 
 # Install Google Cloud SDK for using Firebase Device Lab
 RUN curl https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-184.0.0-linux-x86_64.tar.gz --output /gcloud.tar.gz

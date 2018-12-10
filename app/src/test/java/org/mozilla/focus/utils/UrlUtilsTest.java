@@ -27,7 +27,7 @@ public class UrlUtilsTest {
     }
 
     @Test
-    public void urlsMatchExceptForTrailingSlash() throws Exception {
+    public void urlsMatchExceptForTrailingSlash() {
         assertTrue(UrlUtils.urlsMatchExceptForTrailingSlash("http://www.mozilla.org", "http://www.mozilla.org"));
         assertTrue(UrlUtils.urlsMatchExceptForTrailingSlash("http://www.mozilla.org/", "http://www.mozilla.org"));
         assertTrue(UrlUtils.urlsMatchExceptForTrailingSlash("http://www.mozilla.org", "http://www.mozilla.org/"));
@@ -103,14 +103,6 @@ public class UrlUtilsTest {
         assertEquals("http://mozilla.org", UrlUtils.normalize(" http://mozilla.org "));
         assertEquals("http://mozilla.org", UrlUtils.normalize(" http://mozilla.org"));
         assertEquals("http://localhost", UrlUtils.normalize("localhost"));
-    }
-
-    @Test
-    public void testIsSearchQuery() {
-        assertTrue(UrlUtils.isSearchQuery("hello world"));
-
-        assertFalse(UrlUtils.isSearchQuery("mozilla.org"));
-        assertFalse(UrlUtils.isSearchQuery("mozilla"));
     }
 
     @Test
