@@ -7,9 +7,9 @@ package org.mozilla.focus.fragment
 import android.Manifest
 import android.app.DownloadManager
 import android.app.PendingIntent
-import android.arch.lifecycle.LifecycleObserver
-import android.arch.lifecycle.Observer
-import android.arch.lifecycle.ProcessLifecycleOwner
+import androidx.lifecycle.LifecycleObserver
+import androidx.lifecycle.Observer
+import androidx.lifecycle.ProcessLifecycleOwner
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -24,12 +24,12 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.preference.PreferenceManager
-import android.support.annotation.RequiresApi
-import android.support.design.widget.AppBarLayout
-import android.support.design.widget.CoordinatorLayout
-import android.support.v4.app.ActivityCompat
-import android.support.v4.content.ContextCompat
-import android.support.v4.widget.SwipeRefreshLayout
+import androidx.annotation.RequiresApi
+import com.google.android.material.appbar.AppBarLayout
+import androidx.coordinatorlayout.widget.CoordinatorLayout
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import android.text.Editable
 import android.text.TextUtils
 import android.text.TextWatcher
@@ -56,6 +56,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import mozilla.components.browser.session.Session
 import mozilla.components.browser.session.SessionManager
+import mozilla.components.concept.engine.content.blocking.Tracker
 import mozilla.components.lib.crash.Crash
 import mozilla.components.support.utils.ColorUtils
 import mozilla.components.support.utils.DownloadUtils
@@ -419,7 +420,7 @@ class BrowserFragment : WebFragment(), LifecycleObserver, View.OnClickListener,
             closeButton.setImageDrawable(closeIcon)
         }
 
-        if (customTabConfig.disableUrlbarHiding) {
+        if (!customTabConfig.enableUrlbarHiding) {
             val params = urlBar!!.layoutParams as AppBarLayout.LayoutParams
             params.scrollFlags = 0
         }
@@ -1459,7 +1460,7 @@ class BrowserFragment : WebFragment(), LifecycleObserver, View.OnClickListener,
             progressView?.progress = progress
         }
 
-        override fun onTrackerBlocked(session: Session, blocked: String, all: List<String>) {
+        override fun onTrackerBlocked(session: Session, tracker: Tracker, all: List<Tracker>) {
             menuWeakReference?.let {
                 val menu = it.get()
 

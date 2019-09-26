@@ -9,13 +9,13 @@ import android.content.Context;
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.preference.PreferenceManager;
-import android.support.test.InstrumentationRegistry;
-import android.support.test.rule.ActivityTestRule;
-import android.support.test.runner.AndroidJUnit4;
-import android.support.test.uiautomator.UiObject;
-import android.support.test.uiautomator.UiObjectNotFoundException;
-import android.support.test.uiautomator.UiScrollable;
-import android.support.test.uiautomator.UiSelector;
+import androidx.test.InstrumentationRegistry;
+import androidx.test.rule.ActivityTestRule;
+import androidx.test.runner.AndroidJUnit4;
+import androidx.test.uiautomator.UiObject;
+import androidx.test.uiautomator.UiObjectNotFoundException;
+import androidx.test.uiautomator.UiScrollable;
+import androidx.test.uiautomator.UiSelector;
 
 import org.junit.After;
 import org.junit.Assert;
@@ -30,7 +30,7 @@ import org.mozilla.focus.helpers.TestHelper;
 import java.util.Locale;
 
 import static android.os.Build.VERSION.SDK_INT;
-import static android.support.test.espresso.action.ViewActions.click;
+import static androidx.test.espresso.action.ViewActions.click;
 import static org.mozilla.focus.fragment.FirstrunFragment.FIRSTRUN_PREF;
 import static org.mozilla.focus.helpers.EspressoHelper.openMenu;
 import static org.mozilla.focus.helpers.EspressoHelper.openSettings;
@@ -120,6 +120,12 @@ public class SwitchLocaleTest {
     private UiObject frenchGeneralHeading = TestHelper.mDevice.findObject(new UiSelector()
             .text("Général")
             .resourceId("android:id/title"));
+    private UiObject englishMozillaHeading = TestHelper.mDevice.findObject(new UiSelector()
+            .text("Mozilla")
+            .resourceId("android:id/title"));
+    private UiObject showHomeScreenTips = TestHelper.mDevice.findObject(new UiSelector()
+            .className("android.widget.Switch")
+            .instance(0));
 
     @Test
     public void EnglishSystemLocaleTest() throws UiObjectNotFoundException {
@@ -137,6 +143,14 @@ public class SwitchLocaleTest {
         TestHelper.inlineAutocompleteEditText.waitForExists(waitingTime);
 
         openSettings();
+
+        /* Disable home screen tips */
+        englishMozillaHeading.waitForExists(waitingTime);
+        englishMozillaHeading.click();
+        showHomeScreenTips.waitForExists(waitingTime);
+        showHomeScreenTips.click();
+
+        TestHelper.pressBackKey();
 
         // Open General Settings
         englishGeneralHeading.waitForExists(waitingTime);
@@ -197,9 +211,22 @@ public class SwitchLocaleTest {
                 .text("Automatic private browsing.\nBrowse. Erase. Repeat."));
         englishTitle.waitForExists(waitingTime);
         Assert.assertTrue(englishTitle.exists());
+
+        openSettings();
+
+        /* Enable home screen tips */
+        englishMozillaHeading.waitForExists(waitingTime);
+        englishMozillaHeading.click();
+        showHomeScreenTips.waitForExists(waitingTime);
+        showHomeScreenTips.click();
+
+        TestHelper.pressBackKey();
+        TestHelper.pressBackKey();
+
         TestHelper.menuButton.perform(click());
         Assert.assertEquals(TestHelper.settingsMenuItem.getText(), "Settings");
         Assert.assertEquals(TestHelper.HelpItem.getText(), "Help");
+
         mDevice.pressBack();
     }
 

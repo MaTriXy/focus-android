@@ -8,7 +8,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
-import android.support.v4.content.ContextCompat
+import androidx.core.content.ContextCompat
 import android.text.TextUtils
 import android.view.LayoutInflater
 import android.view.View
@@ -17,8 +17,8 @@ import android.webkit.URLUtil
 import android.widget.ImageView
 import android.widget.PopupWindow
 import android.widget.TextView
+import androidx.core.graphics.drawable.toBitmap
 import mozilla.components.browser.session.Session
-import mozilla.components.support.ktx.android.graphics.drawable.toBitmap
 import mozilla.components.support.utils.DrawableUtils
 import org.mozilla.focus.R
 import java.net.MalformedURLException

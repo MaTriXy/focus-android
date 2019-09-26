@@ -5,14 +5,17 @@
 
 package org.mozilla.focus
 
+import android.content.Context
 import android.os.StrictMode
-import android.support.v7.preference.PreferenceManager
+import androidx.preference.PreferenceManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
+import mozilla.components.lib.fetch.httpurlconnection.HttpURLConnectionClient
 import mozilla.components.service.fretboard.Fretboard
+import mozilla.components.service.fretboard.ValuesProvider
 import mozilla.components.service.fretboard.source.kinto.KintoExperimentSource
 import mozilla.components.service.fretboard.storage.flatfile.FlatFileExperimentStorage
 import mozilla.components.support.base.log.Log
@@ -33,13 +36,14 @@ import org.mozilla.focus.utils.StethoWrapper
 import org.mozilla.focus.web.CleanupSessionObserver
 import org.mozilla.focus.web.WebViewProvider
 import java.io.File
+import kotlin.coroutines.CoroutineContext
 
-class FocusApplication : LocaleAwareApplication() {
+class FocusApplication : LocaleAwareApplication(), CoroutineScope {
     lateinit var fretboard: Fretboard
 
-    companion object {
-        private const val FRETBOARD_BLOCKING_NETWORK_READ_TIMEOUT = 10000L
-    }
+    private var job = Job()
+    override val coroutineContext: CoroutineContext
+        get() = job + Dispatchers.Main
 
     val components: Components by lazy { Components() }
 
@@ -56,45 +60,47 @@ class FocusApplication : LocaleAwareApplication() {
 
         PreferenceManager.setDefaultValues(this, R.xml.settings, false)
 
-        runBlocking {
-            loadExperiments()
+        TelemetryWrapper.init(this)
+        loadExperiments()
 
-            enableStrictMode()
+        enableStrictMode()
 
-            components.searchEngineManager.apply {
-                launch(IO) {
-                    load(this@FocusApplication)
-                }
-
-                registerForLocaleUpdates(this@FocusApplication)
+        components.searchEngineManager.apply {
+            launch(IO) {
+                loadAsync(this@FocusApplication).await()
             }
 
-            TelemetryWrapper.init(this@FocusApplication)
-            AdjustHelper.setupAdjustIfNeeded(this@FocusApplication)
-
-            visibilityLifeCycleCallback = VisibilityLifeCycleCallback(this@FocusApplication)
-            registerActivityLifecycleCallbacks(visibilityLifeCycleCallback)
-
-            components.sessionManager.apply {
-                register(NotificationSessionObserver(this@FocusApplication))
-                register(TelemetrySessionObserver())
-                register(CleanupSessionObserver(this@FocusApplication))
-            }
+            registerForLocaleUpdates(this@FocusApplication)
         }
+
+        AdjustHelper.setupAdjustIfNeeded(this@FocusApplication)
+
+        visibilityLifeCycleCallback = VisibilityLifeCycleCallback(this@FocusApplication)
+        registerActivityLifecycleCallbacks(visibilityLifeCycleCallback)
+
+        components.sessionManager.apply {
+            register(NotificationSessionObserver(this@FocusApplication))
+            register(TelemetrySessionObserver())
+            register(CleanupSessionObserver(this@FocusApplication))
+        }
+
+        launch(IO) { fretboard.updateExperiments() }
     }
 
-    private suspend fun loadExperiments() = coroutineScope {
+    private fun loadExperiments() {
         val experimentsFile = File(filesDir, EXPERIMENTS_JSON_FILENAME)
         val experimentSource = KintoExperimentSource(
-                EXPERIMENTS_BASE_URL, EXPERIMENTS_BUCKET_NAME, EXPERIMENTS_COLLECTION_NAME)
-        fretboard = Fretboard(experimentSource, FlatFileExperimentStorage(experimentsFile))
+            EXPERIMENTS_BASE_URL, EXPERIMENTS_BUCKET_NAME, EXPERIMENTS_COLLECTION_NAME, HttpURLConnectionClient()
+        )
+        fretboard = Fretboard(experimentSource, FlatFileExperimentStorage(experimentsFile),
+            object : ValuesProvider() {
+                override fun getClientId(context: Context): String {
+                    return TelemetryWrapper.clientId
+                }
+            })
         fretboard.loadExperiments()
+        TelemetryWrapper.recordActiveExperiments(this)
         WebViewProvider.determineEngine(this@FocusApplication)
-        launch(IO) {
-            withTimeoutOrNull(FRETBOARD_BLOCKING_NETWORK_READ_TIMEOUT) {
-                fretboard.updateExperiments() // then update disk and memory from the network
-            }
-        }
     }
 
     private fun enableStrictMode() {
@@ -105,7 +111,12 @@ class FocusApplication : LocaleAwareApplication() {
         }
 
         val threadPolicyBuilder = StrictMode.ThreadPolicy.Builder().detectAll()
-        val vmPolicyBuilder = StrictMode.VmPolicy.Builder().detectAll()
+        val vmPolicyBuilder = StrictMode.VmPolicy.Builder()
+                .detectActivityLeaks()
+                .detectFileUriExposure()
+                .detectLeakedClosableObjects()
+                .detectLeakedRegistrationObjects()
+                .detectLeakedSqlLiteObjects()
 
         threadPolicyBuilder.penaltyLog()
         vmPolicyBuilder.penaltyLog()

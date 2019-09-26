@@ -17,9 +17,8 @@ tasks:
       deadline: {$fromNow: '2 hours'}
       provisionerId: aws-provisioner-v1
       workerType: github-worker
-      routes:
-        - 'notify.irc-channel.#android-ci.on-any'
       scopes: []
+      routes: []
       payload:
         maxRunTime: 7200
         image: mozillamobile/focus-android:1.2
@@ -29,12 +28,13 @@ tasks:
           - -cx
           - >-
             git fetch ${event.pull_request.head.repo.clone_url} ${event.pull_request.head.ref}
+            && git submodule update --init
             && git config advice.detachedHead false
             && git checkout ${event.pull_request.head.sha}
             && echo "--" > .adjust_token
             && python tools/l10n/check_locales.py
             && ./gradlew --no-daemon clean assembleFocusX86Debug assembleKlarX86Nightly assembleRelease detektCheck ktlint lintFocusX86Debug lintKlarX86Nightly pmd checkstyle spotbugs assembleFocusX86DebugAndroidTest testFocusX86DebugUnitTest testKlarX86NightlyUnitTest
-            && pip install "compare-locales>=4.0.1,<5.0"
+            && pip install "compare-locales>=5.0.2,<6.0"
             && compare-locales --validate l10n.toml .
         artifacts:
           public:
@@ -47,9 +47,9 @@ tasks:
         owner: ${event.pull_request.user.login}@users.noreply.github.com
         source: ${event.repository.url}
 ###############################################################################
-# Task: Master builds
+# Task: Builds on branches of the main repo
 #
-# Triggered whenever something is pushed/merged to the master branch.
+# Triggered whenever something is pushed/merged to the mozilla-mobile repo.
 #
 # Creates the following task pipeline:
 #
@@ -59,7 +59,7 @@ tasks:
 ###############################################################################
   - $if: 'tasks_for == "github-push"'
     then:
-      $if: 'event.ref == "refs/heads/master"'
+      $if: 'event.repository.fork == false'
       then:
         taskId: {$eval: as_slugid("decision_task")}
         # The next line won't be needed anymore after https://github.com/taskcluster/taskcluster-github/pull/273
@@ -75,6 +75,7 @@ tasks:
           - queue:scheduler-id:taskcluster-github
           - secrets:get:project/focus/firebase
           - secrets:get:project/focus/nimbledroid
+          - queue:route:notify.irc-channel.#android-ci.on-any
         payload:
           maxRunTime: 7200
           image: mozillamobile/focus-android:1.2
@@ -91,6 +92,7 @@ tasks:
             - -cx
             - >-
               git fetch origin
+              && git submodule update --init
               && git config advice.detachedHead false
               && git checkout ${event.after}
               && python tools/taskcluster/schedule-master-build.py
@@ -142,6 +144,8 @@ tasks:
           - project:mobile:focus:releng:googleplay:product:focus
           - secrets:get:project/focus/tokens
           - queue:route:index.project.mobile.focus.release.latest
+        routes:
+          - statuses  # Automatically added by taskcluster-github. It must be explicit because of Chain of Trust
         payload:
           maxRunTime: 600   # Decision should remain fast enough to schedule a handful of tasks
           image: mozillamobile/focus-android:1.2
@@ -161,17 +165,18 @@ tasks:
             - -cx
             - >-
               git fetch origin --tags
+              && git submodule update --init
               && git config advice.detachedHead false
               && git checkout ${event.release.tag_name}
               && python tools/taskcluster/release.py \
                 --tag ${event.release.tag_name} \
-                --track alpha \
+                --channel alpha \
                 --commit \
                 --output /opt/focus-android/app/build/outputs/apk \
-                --apk focusX86/release/app-focus-x86-release-unsigned.apk \
-                --apk klarX86/release/app-klar-x86-release-unsigned.apk \
                 --apk focusArm/release/app-focus-arm-release-unsigned.apk \
-                --apk klarArm/release/app-klar-arm-release-unsigned.apk
+                --apk focusAarch64/release/app-focus-aarch64-release-unsigned.apk \
+                --apk klarArm/release/app-klar-arm-release-unsigned.apk \
+                --apk klarAarch64/release/app-klar-aarch64-release-unsigned.apk
           artifacts:
             public/task-graph.json:
               type: file
@@ -192,7 +197,7 @@ tasks:
           description: Scheduling tasks for releasing Focus/Klar
           owner: ${event.sender.login}@users.noreply.github.com
           source: ${repository}/raw/${event.release.tag_name}/.taskcluster.yml
-# Nighly builds
+# Nightly builds
   - $if: 'tasks_for == "cron"'
     then:
       $let:
@@ -222,6 +227,8 @@ tasks:
           - project:mobile:focus:releng:googleplay:product:focus
           - secrets:get:project/focus/tokens
           - queue:route:index.project.mobile.focus.nightly.latest
+        routes:
+          - statuses  # Automatically added by taskcluster-github. It must be explicit because of Chain of Trust
         payload:
           maxRunTime: 600   # Decision should remain fast enough to schedule a handful of tasks
           image: mozillamobile/focus-android:1.2
@@ -242,14 +249,15 @@ tasks:
             - >-
               git fetch origin
               && git reset --hard origin/master
+              && git submodule update --init
               && python tools/taskcluster/release.py \
-                --track nightly \
+                --channel nightly \
                 --commit \
                 --output /opt/focus-android/app/build/outputs/apk \
-                --apk klarArm/nightly/app-klar-arm-nightly-unsigned.apk \
-                --apk klarX86/nightly/app-klar-x86-nightly-unsigned.apk \
                 --apk focusArm/nightly/app-focus-arm-nightly-unsigned.apk \
-                --apk focusX86/nightly/app-focus-x86-nightly-unsigned.apk
+                --apk focusAarch64/nightly/app-focus-aarch64-nightly-unsigned.apk \
+                --apk klarArm/nightly/app-klar-arm-nightly-unsigned.apk \
+                --apk klarAarch64/nightly/app-klar-aarch64-nightly-unsigned.apk
           artifacts:
             public/task-graph.json:
               type: file
