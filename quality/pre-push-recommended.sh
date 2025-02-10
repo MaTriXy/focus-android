@@ -14,12 +14,10 @@
 # Descriptions for each gradle task below can be found in the
 # output of `./gradlew tasks`.
 ./gradlew -q \
-        checkstyle \
         ktlint \
-        pmd \
-        detektCheck \
-        assembleFocusX86DebugAndroidTest \
-        testFocusX86DebugUnitTest
+        detekt \
+        assembleFocusDebugAndroidTest \
+        testFocusDebugUnitTest
 
 # Tasks omitted because they take a long time to run:
 # - unit test on all variants

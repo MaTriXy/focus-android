@@ -5,15 +5,14 @@
 package org.mozilla.focus.search
 
 import android.content.Context
-import androidx.preference.PreferenceViewHolder
 import android.util.AttributeSet
 import android.widget.CompoundButton
+import androidx.preference.PreferenceViewHolder
 import org.mozilla.focus.R
-import org.mozilla.focus.utils.asActivity
-import java.util.HashSet
+import org.mozilla.focus.ext.tryAsActivity
 
 class MultiselectSearchEngineListPreference(context: Context, attrs: AttributeSet) :
-        SearchEngineListPreference(context, attrs) {
+    SearchEngineListPreference(context, attrs) {
 
     override val itemResId: Int
         get() = R.layout.search_engine_checkbox_button
@@ -31,9 +30,9 @@ class MultiselectSearchEngineListPreference(context: Context, attrs: AttributeSe
             return engineIdSet
         }
 
-    override fun onBindViewHolder(holder: PreferenceViewHolder?) {
+    override fun onBindViewHolder(holder: PreferenceViewHolder) {
         super.onBindViewHolder(holder)
-        this.bindEngineCheckboxesToMenu()
+        bindEngineCheckboxesToMenu()
     }
 
     override fun updateDefaultItem(defaultButton: CompoundButton) {
@@ -50,7 +49,7 @@ class MultiselectSearchEngineListPreference(context: Context, attrs: AttributeSe
             val engineButton = searchEngineGroup!!.getChildAt(i) as CompoundButton
             engineButton.setOnCheckedChangeListener { _, _ ->
                 val context = context
-                context?.asActivity()?.invalidateOptionsMenu()
+                context.tryAsActivity()?.invalidateOptionsMenu()
             }
         }
     }

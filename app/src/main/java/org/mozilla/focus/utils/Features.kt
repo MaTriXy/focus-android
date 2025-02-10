@@ -7,14 +7,9 @@ package org.mozilla.focus.utils
 /**
  * Simple feature flags.
  */
-class Features {
-    companion object {
-        /**
-         * Swipe-to-refresh: Currently disabled due to various UX issues: #1776
-         */
-        @JvmField
-        val SWIPE_TO_REFRESH: Boolean = false
-
-        val SEARCH_TERMS_OR_URL: Boolean = true
-    }
+object Features {
+    /**
+     * Delete all shortcuts when New Session Button from FingerPrint LockScreen is clicked
+     */
+    var DELETE_TOP_SITES_WHEN_NEW_SESSION_BUTTON_CLICKED: Boolean = AppConstants.isDevOrNightlyBuild
 }

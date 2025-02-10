@@ -8,47 +8,51 @@ import android.content.Context
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
-import kotlinx.android.synthetic.main.fragment_autocomplete_customdomains.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import mozilla.components.browser.domains.CustomDomains
+import org.mozilla.focus.GleanMetrics.Autocomplete
 import org.mozilla.focus.R
-import org.mozilla.focus.settings.BaseSettingsFragment
+import org.mozilla.focus.ext.requireComponents
+import org.mozilla.focus.ext.showToolbar
+import org.mozilla.focus.state.AppAction
 import org.mozilla.focus.telemetry.TelemetryWrapper
 import kotlin.coroutines.CoroutineContext
 
 class AutocompleteRemoveFragment : AutocompleteListFragment(), CoroutineScope {
     private var job = Job()
     override val coroutineContext: CoroutineContext
-        get() = job + Dispatchers.Main
+        get() = job + Main
 
-    override fun onCreateOptionsMenu(menu: Menu?, inflater: MenuInflater?) {
-        inflater?.inflate(R.menu.menu_autocomplete_remove, menu)
+    override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+        menuInflater.inflate(R.menu.menu_autocomplete_remove, menu)
     }
 
-    override fun onOptionsItemSelected(item: MenuItem?): Boolean = when (item?.itemId) {
+    override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
         R.id.remove -> {
-            removeSelectedDomains(activity!!.applicationContext)
+            removeSelectedDomains(requireActivity().applicationContext)
             true
         }
-        else -> super.onOptionsItemSelected(item)
+        else -> false
     }
 
     private fun removeSelectedDomains(context: Context) {
-        val domains = (domainList.adapter as DomainListAdapter).selection()
+        val domains = (binding.domainList.adapter as DomainListAdapter).selection()
         if (domains.isNotEmpty()) {
             launch(Main) {
-                async {
+                withContext(Dispatchers.Default) {
                     CustomDomains.remove(context, domains)
-
+                    Autocomplete.domainRemoved.add()
                     TelemetryWrapper.removeAutocompleteDomainsEvent(domains.size)
-                }.await()
+                }
 
-                fragmentManager!!.popBackStack()
+                requireComponents.appStore.dispatch(
+                    AppAction.NavigateUp(requireComponents.store.state.selectedTabId),
+                )
             }
         }
     }
@@ -62,9 +66,7 @@ class AutocompleteRemoveFragment : AutocompleteListFragment(), CoroutineScope {
             job = Job()
         }
 
-        val updater = activity as BaseSettingsFragment.ActionBarUpdater
-        updater.updateTitle(R.string.preference_autocomplete_title_remove)
-        updater.updateIcon(R.drawable.ic_back)
+        showToolbar(getString(R.string.preference_autocomplete_title_remove))
     }
 
     override fun onPause() {

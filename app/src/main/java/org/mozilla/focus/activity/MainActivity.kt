@@ -4,54 +4,83 @@
 
 package org.mozilla.focus.activity
 
-import androidx.lifecycle.Observer
-import androidx.lifecycle.ViewModelProviders
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
+import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
-import android.preference.PreferenceManager
 import android.util.AttributeSet
+import android.view.MenuItem
 import android.view.View
-import mozilla.components.browser.session.Session
-import mozilla.components.browser.session.SessionManager
+import android.view.ViewTreeObserver
+import androidx.appcompat.app.ActionBar
+import androidx.appcompat.widget.Toolbar
+import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.isVisible
+import androidx.preference.PreferenceManager
+import mozilla.components.browser.state.selector.privateTabs
+import mozilla.components.concept.engine.EngineView
+import mozilla.components.lib.auth.canUseBiometricFeature
 import mozilla.components.lib.crash.Crash
+import mozilla.components.service.glean.private.NoExtras
+import mozilla.components.support.base.feature.UserInteractionHandler
+import mozilla.components.support.ktx.android.content.getColorFromAttr
+import mozilla.components.support.ktx.android.view.getWindowInsetsController
+import mozilla.components.support.locale.LocaleAwareAppCompatActivity
 import mozilla.components.support.utils.SafeIntent
+import org.mozilla.focus.GleanMetrics.AppOpened
+import org.mozilla.focus.GleanMetrics.Notifications
 import org.mozilla.focus.R
-import org.mozilla.focus.biometrics.Biometrics
+import org.mozilla.focus.appreview.AppReviewUtils
+import org.mozilla.focus.databinding.ActivityMainBinding
 import org.mozilla.focus.ext.components
+import org.mozilla.focus.ext.setNavigationIcon
+import org.mozilla.focus.ext.settings
+import org.mozilla.focus.ext.updateSecureWindowFlags
 import org.mozilla.focus.fragment.BrowserFragment
-import org.mozilla.focus.fragment.FirstrunFragment
 import org.mozilla.focus.fragment.UrlInputFragment
-import org.mozilla.focus.locale.LocaleAwareAppCompatActivity
+import org.mozilla.focus.navigation.MainActivityNavigation
+import org.mozilla.focus.navigation.Navigator
+import org.mozilla.focus.searchwidget.ExternalIntentNavigation
 import org.mozilla.focus.session.IntentProcessor
-import org.mozilla.focus.session.removeAndCloseAllSessions
-import org.mozilla.focus.session.ui.SessionsSheetFragment
-import org.mozilla.focus.settings.ExperimentsSettingsFragment
 import org.mozilla.focus.shortcut.HomeScreen
+import org.mozilla.focus.state.AppAction
+import org.mozilla.focus.state.Screen
 import org.mozilla.focus.telemetry.TelemetryWrapper
-import org.mozilla.focus.utils.AppConstants
-import org.mozilla.focus.utils.ExperimentsSyncService
-import org.mozilla.focus.utils.Settings
+import org.mozilla.focus.telemetry.startuptelemetry.StartupPathProvider
+import org.mozilla.focus.telemetry.startuptelemetry.StartupTypeTelemetry
+import org.mozilla.focus.utils.StatusBarUtils
 import org.mozilla.focus.utils.SupportUtils
-import org.mozilla.focus.utils.ViewUtils
-import org.mozilla.focus.viewmodel.MainViewModel
-import org.mozilla.focus.web.IWebView
-import org.mozilla.focus.web.WebViewProvider
 
-@Suppress("TooManyFunctions")
+private const val REQUEST_TIME_OUT = 2000L
+
+@Suppress("TooManyFunctions", "LargeClass")
 open class MainActivity : LocaleAwareAppCompatActivity() {
-    protected open val isCustomTabMode: Boolean
-        get() = false
+    private var isToolbarInflated = false
+    private val intentProcessor by lazy {
+        IntentProcessor(this, components.tabsUseCases, components.customTabsUseCases)
+    }
 
-    protected open val currentSessionForActivity: Session
-        get() = components.sessionManager.selectedSessionOrThrow
+    private val navigator by lazy { Navigator(components.appStore, MainActivityNavigation(this)) }
+    private val tabCount: Int
+        get() = components.store.state.privateTabs.size
 
-    private val intentProcessor by lazy { IntentProcessor(this, components.sessionManager) }
-
-    private var previousSessionCount = 0
+    private val startupPathProvider = StartupPathProvider()
+    private lateinit var startupTypeTelemetry: StartupTypeTelemetry
+    private var _binding: ActivityMainBinding? = null
+    private val binding get() = _binding!!
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
+
+        updateSecureWindowFlags()
+
         super.onCreate(savedInstanceState)
+        _binding = ActivityMainBinding.inflate(layoutInflater)
+        // Checks if Activity is currently in PiP mode if launched from external intents, then exits it
+        checkAndExitPiP()
 
         if (!isTaskRoot) {
             if (intent.hasCategory(Intent.CATEGORY_LAUNCHER) && Intent.ACTION_MAIN == intent.action) {
@@ -60,85 +89,89 @@ open class MainActivity : LocaleAwareAppCompatActivity() {
             }
         }
 
-        initViewModel()
+        @Suppress("DEPRECATION") // https://github.com/mozilla-mobile/focus-android/issues/5016
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
 
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+        window.statusBarColor = ContextCompat.getColor(this, android.R.color.transparent)
+        when (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) {
+            Configuration.UI_MODE_NIGHT_UNDEFINED, // We assume light here per Android doc's recommendation
+            Configuration.UI_MODE_NIGHT_NO,
+            -> {
+                updateLightSystemBars()
+            }
+            Configuration.UI_MODE_NIGHT_YES -> {
+                clearLightSystemBars()
+            }
+        }
+        setContentView(binding.root)
 
-        setContentView(R.layout.activity_main)
-
-        val intent = SafeIntent(intent)
-
-        if (intent.hasExtra(HomeScreen.ADD_TO_HOMESCREEN_TAG)) {
-            intentProcessor.handleNewIntent(this, intent)
+        startupPathProvider.attachOnActivityOnCreate(lifecycle, intent)
+        startupTypeTelemetry = StartupTypeTelemetry(components.startupStateProvider, startupPathProvider).apply {
+            attachOnMainActivityOnCreate(lifecycle)
         }
 
-        if (intent.isLauncherIntent) {
+        val safeIntent = SafeIntent(intent)
+
+        lifecycle.addObserver(navigator)
+
+        if (savedInstanceState == null) {
+            handleAppNavigation(safeIntent)
+        }
+
+        if (savedInstanceState == null && intent.hasExtra(HomeScreen.ADD_TO_HOMESCREEN_TAG)) {
+            intentProcessor.handleNewIntent(this, safeIntent)
+        }
+
+        if (safeIntent.isLauncherIntent) {
+            AppOpened.fromIcons.record(AppOpened.FromIconsExtra(AppOpenType.LAUNCH.type))
             TelemetryWrapper.openFromIconEvent()
         }
 
-        registerSessionObserver()
-
-        WebViewProvider.preload(this)
-
-        val launchCount = Settings.getInstance(this).getAppLaunchCount()
+        val launchCount = settings.getAppLaunchCount()
         PreferenceManager.getDefaultSharedPreferences(this)
-                .edit()
-                .putInt(getString(R.string.app_launch_count), launchCount + 1)
-                .apply()
+            .edit()
+            .putInt(getString(R.string.app_launch_count), launchCount + 1)
+            .apply()
+
+        AppReviewUtils.showAppReview(this)
     }
 
-    private fun initViewModel() {
-        val viewModel = ViewModelProviders.of(this).get(MainViewModel::class.java)
-        viewModel.getExperimentsLiveData().observe(this, Observer { aBoolean ->
-            if (aBoolean!!) {
-                val preferenceFragment = ExperimentsSettingsFragment()
-                supportFragmentManager
-                        .beginTransaction()
-                        .replace(R.id.container, preferenceFragment, ExperimentsSettingsFragment.FRAGMENT_TAG)
-                        .addToBackStack(null)
-                        .commitAllowingStateLoss()
-            }
-        })
-    }
-
-    private fun registerSessionObserver() {
-        components.sessionManager.register(object : SessionManager.Observer {
-            override fun onSessionSelected(session: Session) {
-                showBrowserScreenForCurrentSession()
-            }
-
-            override fun onAllSessionsRemoved() {
-                showUrlInputScreen()
-
-                WebViewProvider.performNewBrowserSessionCleanup()
-            }
-
-            override fun onSessionRemoved(session: Session) {
-                previousSessionCount = components.sessionManager.sessions.count()
-                if (!isCustomTabMode && components.sessionManager.sessions.isEmpty()) {
-                    showUrlInputScreen()
-
-                    WebViewProvider.performNewBrowserSessionCleanup()
+    private fun setSplashScreenPreDrawListener(safeIntent: SafeIntent) {
+        val endTime = System.currentTimeMillis() + REQUEST_TIME_OUT
+        binding.container.viewTreeObserver.addOnPreDrawListener(
+            object : ViewTreeObserver.OnPreDrawListener {
+                override fun onPreDraw(): Boolean {
+                    return if (System.currentTimeMillis() >= endTime) {
+                        ExternalIntentNavigation.handleAppNavigation(
+                            bundle = safeIntent.extras,
+                            context = this@MainActivity,
+                        )
+                        binding.container.viewTreeObserver.removeOnPreDrawListener(this)
+                        true
+                    } else {
+                        false
+                    }
                 }
-            }
-        }, owner = this)
+            },
+        )
+    }
 
-        if (!isCustomTabMode && components.sessionManager.sessions.isEmpty()) {
-            showUrlInputScreen()
-
-            WebViewProvider.performNewBrowserSessionCleanup()
-        } else {
-            showBrowserScreenForCurrentSession()
-        }
-
-        // If needed show the first run tour on top of the browser or url input fragment.
-        if (Settings.getInstance(this@MainActivity).shouldShowFirstrun() && !isCustomTabMode) {
-            showFirstrun(components.sessionManager.selectedSession)
+    private fun checkAndExitPiP() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode && intent != null) {
+            // Exit PiP mode
+            moveTaskToBack(false)
+            startActivity(Intent(this, this::class.java).setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
         }
     }
 
-    override fun applyLocale() {
-        // We don't care here: all our fragments update themselves as appropriate
+    final override fun onUserLeaveHint() {
+        val browserFragment =
+            supportFragmentManager.findFragmentByTag(BrowserFragment.FRAGMENT_TAG) as BrowserFragment?
+        if (browserFragment is UserInteractionHandler && browserFragment.onHomePressed()) {
+            return
+        }
+        super.onUserLeaveHint()
     }
 
     override fun onResume() {
@@ -149,10 +182,6 @@ open class MainActivity : LocaleAwareAppCompatActivity() {
     }
 
     override fun onPause() {
-        if (isFinishing) {
-            WebViewProvider.performCleanup(this)
-        }
-
         val fragmentManager = supportFragmentManager
         val browserFragment =
             fragmentManager.findFragmentByTag(BrowserFragment.FRAGMENT_TAG) as BrowserFragment?
@@ -171,22 +200,28 @@ open class MainActivity : LocaleAwareAppCompatActivity() {
         super.onStop()
 
         TelemetryWrapper.stopMainActivity()
-        ExperimentsSyncService.scheduleSync(this)
     }
 
     override fun onNewIntent(unsafeIntent: Intent) {
         if (Crash.isCrashIntent(unsafeIntent)) {
             val browserFragment = supportFragmentManager
-                    .findFragmentByTag(BrowserFragment.FRAGMENT_TAG) as BrowserFragment?
+                .findFragmentByTag(BrowserFragment.FRAGMENT_TAG) as BrowserFragment?
             val crash = Crash.fromIntent(unsafeIntent)
 
             browserFragment?.handleTabCrash(crash)
         }
-
+        startupPathProvider.onIntentReceived(intent)
         val intent = SafeIntent(unsafeIntent)
 
+        handleAppNavigation(intent)
+
         if (intent.dataString.equals(SupportUtils.OPEN_WITH_DEFAULT_BROWSER_URL)) {
-            openGeneralSettings()
+            components.appStore.dispatch(
+                AppAction.OpenSettings(
+                    page = Screen.Settings.Page.General,
+                ),
+            )
+            super.onNewIntent(unsafeIntent)
             return
         }
 
@@ -197,6 +232,8 @@ open class MainActivity : LocaleAwareAppCompatActivity() {
         }
 
         if (ACTION_OPEN == action) {
+            Notifications.openButtonTapped.record(NoExtras())
+
             TelemetryWrapper.openNotificationActionEvent()
         }
 
@@ -205,146 +242,178 @@ open class MainActivity : LocaleAwareAppCompatActivity() {
         }
 
         if (intent.isLauncherIntent) {
+            AppOpened.fromIcons.record(AppOpened.FromIconsExtra(AppOpenType.RESUME.type))
+
             TelemetryWrapper.resumeFromIconEvent()
+        }
+
+        super.onNewIntent(unsafeIntent)
+    }
+
+    private fun handleAppNavigation(intent: SafeIntent) {
+        if (components.appStore.state.screen == Screen.Locked()) {
+            components.appStore.dispatch(AppAction.Lock(intent.extras))
+        } else if (settings.getAppLaunchCount() == 0) {
+            setSplashScreenPreDrawListener(intent)
+        } else {
+            ExternalIntentNavigation.handleAppNavigation(
+                bundle = intent.extras,
+                context = this,
+            )
         }
     }
 
     private fun processEraseAction(intent: SafeIntent) {
         val fromShortcut = intent.getBooleanExtra(EXTRA_SHORTCUT, false)
-        val fromNotification = intent.getBooleanExtra(EXTRA_NOTIFICATION, false)
+        val fromNotificationAction = intent.getBooleanExtra(EXTRA_NOTIFICATION, false)
 
-        components.sessionManager.removeAndCloseAllSessions()
+        components.tabsUseCases.removeAllTabs()
+
+        if (fromNotificationAction) {
+            Notifications.eraseOpenButtonTapped.record(Notifications.EraseOpenButtonTappedExtra(tabCount))
+        }
 
         if (fromShortcut) {
             TelemetryWrapper.eraseShortcutEvent()
-        } else if (fromNotification) {
+        } else if (fromNotificationAction) {
             TelemetryWrapper.eraseAndOpenNotificationActionEvent()
         }
     }
 
-    private fun showUrlInputScreen() {
-        val fragmentManager = supportFragmentManager
-        val browserFragment = fragmentManager.findFragmentByTag(BrowserFragment.FRAGMENT_TAG) as BrowserFragment?
-
-        val isShowingBrowser = browserFragment != null
-        val crashReporterIsVisible = browserFragment?.crashReporterIsVisible() ?: false
-
-        if (isShowingBrowser && !crashReporterIsVisible) {
-            ViewUtils.showBrandedSnackbar(findViewById(android.R.id.content),
-                    R.string.feedback_erase,
-                    resources.getInteger(R.integer.erase_snackbar_delay))
+    override fun onCreateView(parent: View?, name: String, context: Context, attrs: AttributeSet): View? {
+        return if (name == EngineView::class.java.name) {
+            components.engine.createView(context, attrs).asView()
+        } else {
+            super.onCreateView(parent, name, context, attrs)
         }
-
-        // We add the url input fragment to the layout if it doesn't exist yet.
-        val transaction = fragmentManager
-                .beginTransaction()
-
-        // We only want to play the animation if a browser fragment is added and resumed.
-        // If it is not resumed then the application is currently in the process of resuming
-        // and the session was removed while the app was in the background (e.g. via the
-        // notification). In this case we do not want to show the content and remove the
-        // browser fragment immediately.
-        val shouldAnimate = isShowingBrowser && browserFragment!!.isResumed
-
-        if (shouldAnimate) {
-            if (AppConstants.isGeckoBuild) {
-                transaction.setCustomAnimations(0, R.anim.erase_animation_gv)
-            } else {
-                transaction.setCustomAnimations(0, R.anim.erase_animation)
-            }
-        }
-
-        // Currently this callback can get invoked while the app is in the background. Therefore we are using
-        // commitAllowingStateLoss() here because we can't do a fragment transaction while the app is in the
-        // background - like we already do in showBrowserScreenForCurrentSession().
-        // Ideally we'd make it possible to pause observers while the app is in the background:
-        // https://github.com/mozilla-mobile/android-components/issues/876
-        transaction
-                .replace(R.id.container, UrlInputFragment.createWithoutSession(), UrlInputFragment.FRAGMENT_TAG)
-                .commitAllowingStateLoss()
-    }
-
-    private fun showFirstrun(currentSession: Session? = null) {
-        supportFragmentManager
-                .beginTransaction()
-                .add(R.id.container, FirstrunFragment.create(currentSession), FirstrunFragment.FRAGMENT_TAG)
-                .commit()
-    }
-
-    protected fun showBrowserScreenForCurrentSession() {
-        val currentSession = currentSessionForActivity
-        val fragmentManager = supportFragmentManager
-
-        val fragment = fragmentManager.findFragmentByTag(BrowserFragment.FRAGMENT_TAG) as BrowserFragment?
-        if (fragment != null && fragment.session == currentSession) {
-            // There's already a BrowserFragment displaying this session.
-            return
-        }
-
-        val browserFragment = BrowserFragment.createForSession(currentSession)
-        val isNewSession = previousSessionCount < components.sessionManager.sessions.count() && previousSessionCount > 0
-
-        if ((currentSession.source == Session.Source.ACTION_SEND ||
-                currentSession.source == Session.Source.HOME_SCREEN) && isNewSession) {
-            browserFragment.openedFromExternalLink = true
-        }
-
-        fragmentManager
-                .beginTransaction()
-                .replace(R.id.container, browserFragment, BrowserFragment.FRAGMENT_TAG)
-            .commitAllowingStateLoss()
-
-        previousSessionCount = components.sessionManager.sessions.count()
-    }
-
-    override fun onCreateView(name: String, context: Context, attrs: AttributeSet): View? {
-        return if (name == IWebView::class.java.name) {
-            // Inject our implementation of IWebView from the WebViewProvider.
-            WebViewProvider.create(this, attrs)
-        } else super.onCreateView(name, context, attrs)
     }
 
     override fun onBackPressed() {
         val fragmentManager = supportFragmentManager
 
-        val sessionsSheetFragment = fragmentManager.findFragmentByTag(
-            SessionsSheetFragment.FRAGMENT_TAG) as SessionsSheetFragment?
-        if (sessionsSheetFragment != null &&
-                sessionsSheetFragment.isVisible &&
-                sessionsSheetFragment.onBackPressed()) {
-            // SessionsSheetFragment handles back presses itself (custom animations).
-            return
-        }
-
-        val urlInputFragment = fragmentManager.findFragmentByTag(UrlInputFragment.FRAGMENT_TAG) as UrlInputFragment?
+        val urlInputFragment =
+            fragmentManager.findFragmentByTag(UrlInputFragment.FRAGMENT_TAG) as UrlInputFragment?
         if (urlInputFragment != null &&
-                urlInputFragment.isVisible &&
-                urlInputFragment.onBackPressed()) {
+            urlInputFragment.isVisible &&
+            urlInputFragment.onBackPressed()
+        ) {
             // The URL input fragment has handled the back press. It does its own animations so
             // we do not try to remove it from outside.
             return
         }
 
-        val browserFragment = fragmentManager.findFragmentByTag(BrowserFragment.FRAGMENT_TAG) as BrowserFragment?
+        val browserFragment =
+            fragmentManager.findFragmentByTag(BrowserFragment.FRAGMENT_TAG) as BrowserFragment?
         if (browserFragment != null &&
-                browserFragment.isVisible &&
-                browserFragment.onBackPressed()) {
+            browserFragment.isVisible &&
+            browserFragment.onBackPressed()
+        ) {
             // The Browser fragment handles back presses on its own because it might just go back
             // in the browsing history.
             return
         }
 
-        super.onBackPressed()
+        val appStore = components.appStore
+        if (appStore.state.screen is Screen.Settings || appStore.state.screen is Screen.SitePermissionOptionsScreen) {
+            // When on a settings screen we want the same behavior as navigating "up" via the toolbar
+            // and therefore dispatch the `NavigateUp` action on the app store.
+            val selectedTabId = components.store.state.selectedTabId
+            appStore.dispatch(AppAction.NavigateUp(selectedTabId))
+            return
+        }
+
+        super.getOnBackPressedDispatcher().onBackPressed()
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == android.R.id.home) {
+            // We forward an up action to the app store with the NavigateUp action to let the reducer
+            // decide to show a different screen.
+            val selectedTabId = components.store.state.selectedTabId
+            components.appStore.dispatch(AppAction.NavigateUp(selectedTabId))
+            return true
+        }
+
+        return super.onOptionsItemSelected(item)
     }
 
     // Handles the edge case of a user removing all enrolled prints while auth was enabled
     private fun checkBiometricStillValid() {
         // Disable biometrics if the user is no longer eligible due to un-enrolling fingerprints:
-        if (!Biometrics.hasFingerprintHardware(this)) {
+        if (!canUseBiometricFeature()) {
             PreferenceManager.getDefaultSharedPreferences(this)
-                    .edit().putBoolean(getString(R.string.pref_key_biometric),
-                            false).apply()
+                .edit().putBoolean(
+                    getString(R.string.pref_key_biometric),
+                    false,
+                ).apply()
         }
+    }
+
+    private fun updateLightSystemBars() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            window.statusBarColor = getColorFromAttr(android.R.attr.statusBarColor)
+            window.getWindowInsetsController().isAppearanceLightStatusBars = true
+        } else {
+            window.statusBarColor = Color.BLACK
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // API level can display handle light navigation bar color
+            window.getWindowInsetsController().isAppearanceLightNavigationBars = true
+            window.navigationBarColor = ContextCompat.getColor(this, android.R.color.transparent)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                window.navigationBarDividerColor =
+                    ContextCompat.getColor(this, android.R.color.transparent)
+            }
+        }
+    }
+
+    private fun clearLightSystemBars() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            window.getWindowInsetsController().isAppearanceLightStatusBars = false
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // API level can display handle light navigation bar color
+            window.getWindowInsetsController().isAppearanceLightNavigationBars = false
+        }
+    }
+
+    fun getToolbar(): ActionBar {
+        if (!isToolbarInflated) {
+            val toolbar = binding.toolbar.inflate() as Toolbar
+            setSupportActionBar(toolbar)
+            setNavigationIcon(R.drawable.ic_back_button)
+            isToolbarInflated = true
+        }
+        return supportActionBar!!
+    }
+
+    fun customizeStatusBar(backgroundColorId: Int? = null) {
+        with(binding.statusBarBackground) {
+            binding.statusBarBackground.isVisible = true
+            StatusBarUtils.getStatusBarHeight(this) { statusBarHeight ->
+                layoutParams.height = statusBarHeight
+                backgroundColorId?.let { color ->
+                    setBackgroundColor(ContextCompat.getColor(context, color))
+                }
+            }
+        }
+    }
+
+    fun hideStatusBarBackground() {
+        binding.statusBarBackground.isVisible = false
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        _binding = null
+    }
+
+    enum class AppOpenType(val type: String) {
+        LAUNCH("Launch"),
+        RESUME("Resume"),
     }
 
     companion object {
@@ -352,9 +421,6 @@ open class MainActivity : LocaleAwareAppCompatActivity() {
         const val ACTION_OPEN = "open"
 
         const val EXTRA_NOTIFICATION = "notification"
-
         private const val EXTRA_SHORTCUT = "shortcut"
-
-        const val EXPERIMENTS_JOB_ID: Int = 4141
     }
 }

@@ -5,6 +5,7 @@
 package org.mozilla.focus.screenshots;
 
 import android.os.SystemClock;
+
 import androidx.test.espresso.NoMatchingViewException;
 import androidx.test.runner.AndroidJUnit4;
 import androidx.test.uiautomator.By;
@@ -16,6 +17,7 @@ import androidx.test.uiautomator.Until;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.ClassRule;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mozilla.focus.R;
@@ -44,6 +46,7 @@ import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.mozilla.focus.helpers.EspressoHelper.openSettings;
 
+@Ignore("See: https://github.com/mozilla-mobile/mobile-test-eng/issues/305")
 @RunWith(AndroidJUnit4.class)
 public class BrowserScreenScreenshots extends ScreenshotTest {
 
@@ -96,7 +99,7 @@ public class BrowserScreenScreenshots extends ScreenshotTest {
     }
 
     private void takeScreenshotsOfBrowsingView() {
-        onView(withId(R.id.urlView))
+        onView(withId(R.id.mozac_browser_toolbar_edit_url_view))
                 .check(matches(isDisplayed()));
 
         // click yes, then go into search dialog and change to twitter, or create twitter engine
@@ -139,7 +142,7 @@ public class BrowserScreenScreenshots extends ScreenshotTest {
                 .check(matches(isDisplayed()));
         device.pressBack();
 
-        onView(withId(R.id.urlView))
+        onView(withId(R.id.mozac_browser_toolbar_edit_url_view))
                 .check(matches(isDisplayed()))
                 .check(matches(hasFocus()))
                 .perform(click(), replaceText(webServer.url("/").toString()));
@@ -154,32 +157,19 @@ public class BrowserScreenScreenshots extends ScreenshotTest {
                     .perform(click());
         } catch (AssertionError dne) { }
 
-        onView(withId(R.id.urlView))
+        onView(withId(R.id.mozac_browser_toolbar_edit_url_view))
                 .check(matches(isDisplayed()))
                 .check(matches(hasFocus()))
                 .perform(pressImeActionButton());
 
         device.findObject(new UiSelector()
-                .resourceId(TestHelper.getAppName() + ":id/webview")
+                .resourceId(TestHelper.getAppName() + ":id/engineView")
                 .enabled(true))
                 .waitForExists(waitingTime);
 
-        onView(withId(R.id.display_url))
+        onView(withId(R.id.mozac_browser_toolbar_url_view))
                 .check(matches(isDisplayed()))
                 .check(matches(withText(containsString(webServer.getHostName()))));
-
-        // Check add link to autocomplete text
-        onView(withId(R.id.display_url)).perform(click());
-        onView(withId(R.id.addToAutoComplete))
-                .check(matches(isDisplayed()));
-        Screengrab.screenshot("Addlink_autocomplete");
-        onView(withId(R.id.addToAutoComplete))
-                .perform(click());
-        Screengrab.screenshot("new_customURL_popup");
-        onView(withId(R.id.display_url)).perform(click());
-        onView(withId(R.id.addToAutoComplete))
-                .perform(click());
-        Screengrab.screenshot("customURL_alreadyexists_popup");
     }
 
     private void takeScreenshotsOfOpenWithAndShare() throws Exception {
@@ -232,7 +222,7 @@ public class BrowserScreenScreenshots extends ScreenshotTest {
                 .enabled(true));
         UiObject openNewTabTitle = device.findObject(new UiSelector()
                 .resourceId(TestHelper.getAppName() + ":id/design_menu_item_text")
-                .text(getString(R.string.contextmenu_open_in_new_tab))
+                .text(getString(R.string.mozac_feature_contextmenu_open_link_in_private_tab))
                 .enabled(true));
         UiObject multiTabBtn = device.findObject(new UiSelector()
                 .resourceId(TestHelper.getAppName() + ":id/tabs")
@@ -297,7 +287,7 @@ public class BrowserScreenScreenshots extends ScreenshotTest {
     private void takeScreenshotofSecureCon() throws Exception {
 
         // take the security info of google.com for https connection
-        onView(withId(R.id.urlView))
+        onView(withId(R.id.mozac_browser_toolbar_edit_url_view))
                 .check(matches(isDisplayed()))
                 .check(matches(hasFocus()))
                 .perform(click(), replaceText("www.google.com"), pressImeActionButton());

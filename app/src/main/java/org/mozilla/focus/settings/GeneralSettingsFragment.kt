@@ -5,132 +5,137 @@
 package org.mozilla.focus.settings
 
 import android.content.SharedPreferences
+import android.os.Build
 import android.os.Bundle
-import androidx.preference.ListPreference
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.preference.Preference
-import android.text.TextUtils
-import android.view.Gravity
-import android.view.ViewGroup
-import android.view.WindowManager
-import android.view.WindowManager.LayoutParams.MATCH_PARENT
-import android.view.WindowManager.LayoutParams.WRAP_CONTENT
-import android.widget.FrameLayout
-import android.widget.ProgressBar
+import androidx.preference.PreferenceManager
 import org.mozilla.focus.R
-import org.mozilla.focus.activity.SettingsActivity
-import org.mozilla.focus.locale.LocaleManager
-import org.mozilla.focus.locale.Locales
-import org.mozilla.focus.telemetry.TelemetryWrapper
+import org.mozilla.focus.ext.requireComponents
+import org.mozilla.focus.ext.requirePreference
+import org.mozilla.focus.ext.showToolbar
+import org.mozilla.focus.locale.screen.LanguageStorage.Companion.LOCALE_SYSTEM_DEFAULT
+import org.mozilla.focus.locale.screen.LocaleDescriptor
+import org.mozilla.focus.state.AppAction
+import org.mozilla.focus.state.Screen
 import org.mozilla.focus.widget.DefaultBrowserPreference
-import org.mozilla.focus.widget.LocaleListPreference
-import java.util.Locale
 
-class GeneralSettingsFragment : BaseSettingsFragment(),
-    SharedPreferences.OnSharedPreferenceChangeListener {
+@Suppress("TooManyFunctions") // code is split into multiple functions with their own purpose.
+class GeneralSettingsFragment :
+    BaseSettingsFragment() {
 
-    private var localeUpdated: Boolean = false
+    private lateinit var radioLightTheme: RadioButtonPreference
+    private lateinit var radioDarkTheme: RadioButtonPreference
+    private lateinit var radioDefaultTheme: RadioButtonPreference
+
+    private lateinit var defaultBrowserPreference: DefaultBrowserPreference
 
     override fun onCreatePreferences(p0: Bundle?, p1: String?) {
         addPreferencesFromResource(R.xml.general_settings)
+        setupPreferences()
     }
 
     override fun onResume() {
         super.onResume()
-
-        val preference =
-            findPreference(getString(R.string.pref_key_default_browser)) as DefaultBrowserPreference
-        preference.update()
-
-        preferenceManager.sharedPreferences.registerOnSharedPreferenceChangeListener(this)
-
-        // Update title and icons when returning to fragments.
-        val updater = activity as BaseSettingsFragment.ActionBarUpdater
-        updater.updateTitle(R.string.preference_category_general)
-        updater.updateIcon(R.drawable.ic_back)
+        defaultBrowserPreference.update()
+        showToolbar(getString(R.string.preference_category_general))
     }
 
-    override fun onPause() {
-        preferenceManager.sharedPreferences.unregisterOnSharedPreferenceChangeListener(this)
-        super.onPause()
+    private fun setupPreferences() {
+        setupDefaultBrowserPreference()
+        bindLocalePreference()
+        bindLightTheme()
+        bindDarkTheme()
+        bindDefaultTheme()
+        setupRadioGroups()
     }
 
-    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences, key: String) {
-        TelemetryWrapper.settingsEvent(key, sharedPreferences.all[key].toString())
-
-        if (!localeUpdated && key == getString(R.string.pref_key_locale)) {
-            // Updating the locale leads to onSharedPreferenceChanged being triggered again in some
-            // cases. To avoid an infinite loop we won't update the preference a second time. This
-            // fragment gets replaced at the end of this method anyways.
-            localeUpdated = true
-
-            //Set langChanged from InstalledSearchEngines to true
-            InstalledSearchEnginesSettingsFragment.languageChanged = true
-
-            val languagePreference =
-                findPreference(getString(R.string.pref_key_locale)) as ListPreference
-            val value = languagePreference.value
-
-            val localeManager = LocaleManager.getInstance()
-
-            val locale: Locale?
-            if (TextUtils.isEmpty(value)) {
-                localeManager.resetToSystemLocale(activity)
-                locale = localeManager.getCurrentLocale(activity)
-            } else {
-                locale = Locales.parseLocaleCode(value)
-                localeManager.setSelectedLocale(activity, value)
-            }
-            localeManager.updateConfiguration(activity, locale)
-
-            // Manually notify SettingsActivity of locale changes (in most other cases activities
-            // will detect changes in onActivityResult(), but that doesn't apply to SettingsActivity).
-            activity!!.onConfigurationChanged(activity!!.resources.configuration)
-
-            // And ensure that the calling LocaleAware*Activity knows that the locale changed:
-            activity!!.setResult(SettingsActivity.ACTIVITY_RESULT_LOCALE_CHANGED)
-
-            // The easiest way to ensure we update the language is by replacing the entire fragment
-            // We have to pop the main Settings Fragment as well and then navigate here
-            fragmentManager!!.popBackStack()
-            fragmentManager!!.beginTransaction()
-                .replace(R.id.container, SettingsFragment.newInstance()).commit()
-            navigateToFragment(GeneralSettingsFragment.newInstance())
+    private fun bindLocalePreference() {
+        val localePreference: Preference = requirePreference(R.string.pref_key_locale)
+        localePreference.summary = getLocaleSummary()
+        localePreference.setOnPreferenceClickListener {
+            requireComponents.appStore.dispatch(
+                AppAction.OpenSettings(Screen.Settings.Page.Locale),
+            )
+            true
         }
     }
 
-    override fun onDisplayPreferenceDialog(preference: Preference?) {
-        if (preference is LocaleListPreference) {
-            showLoading(view as ViewGroup)
-            // wait until the values are set
-            preference.setEntriesListener {
-                hideLoading()
-                super.onDisplayPreferenceDialog(preference)
-            }
-        } else super.onDisplayPreferenceDialog(preference)
+    private fun setupDefaultBrowserPreference() {
+        defaultBrowserPreference = requirePreference(R.string.pref_key_default_browser)
     }
 
-    private var progress: FrameLayout? = null
-
-    private fun hideLoading() {
-        val root = view as ViewGroup?
-        if (root != null && progress != null) {
-            root.removeView(progress)
+    private fun bindLightTheme() {
+        radioLightTheme = requirePreference(R.string.pref_key_light_theme)
+        radioLightTheme.onClickListener {
+            setNewTheme(AppCompatDelegate.MODE_NIGHT_NO)
         }
     }
 
-    private fun showLoading(root: ViewGroup) {
-        progress = FrameLayout(root.context)
-        val lp = FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
-        lp.gravity = Gravity.CENTER
-        progress!!.addView(ProgressBar(root.context), lp)
-        val lp2 = WindowManager.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-        root.addView(progress, lp2)
+    private fun bindDarkTheme() {
+        radioDarkTheme = requirePreference(R.string.pref_key_dark_theme)
+        radioDarkTheme.onClickListener {
+            setNewTheme(AppCompatDelegate.MODE_NIGHT_YES)
+        }
     }
 
-    companion object {
+    private fun bindDefaultTheme() {
+        radioDefaultTheme = requirePreference(R.string.pref_key_default_theme)
+        val defaultThemeTitle = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            context?.getString(R.string.preference_follow_device_theme)
+        } else {
+            context?.getString(R.string.preference_auto_battery_theme)
+        }
 
-        fun newInstance(): GeneralSettingsFragment {
-            return GeneralSettingsFragment()
+        radioDefaultTheme.apply {
+            title = defaultThemeTitle
+            onClickListener {
+                setDefaultTheme()
+            }
+        }
+    }
+
+    private fun getLocaleSummary(): CharSequence? {
+        val sharedConfig: SharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
+        val value: String? =
+            sharedConfig.getString(
+                resources.getString(R.string.pref_key_locale),
+                resources.getString(R.string.preference_language_systemdefault),
+            )
+        return value?.let {
+            if (value.isEmpty() || value == LOCALE_SYSTEM_DEFAULT) {
+                return resources.getString(R.string.preference_language_systemdefault)
+            }
+            LocaleDescriptor(it).getNativeName()
+        }
+    }
+
+    private fun setupRadioGroups() {
+        addToRadioGroup(
+            radioLightTheme,
+            radioDarkTheme,
+            radioDefaultTheme,
+        )
+    }
+
+    private fun setNewTheme(mode: Int) {
+        if (AppCompatDelegate.getDefaultNightMode() == mode) return
+        AppCompatDelegate.setDefaultNightMode(mode)
+        activity?.recreate()
+
+        requireComponents.engine.settings.preferredColorScheme = requireComponents.settings.getPreferredColorScheme()
+        requireComponents.sessionUseCases.reload.invoke()
+    }
+
+    private fun setDefaultTheme() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            AppCompatDelegate.setDefaultNightMode(
+                AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM,
+            )
+        } else {
+            AppCompatDelegate.setDefaultNightMode(
+                AppCompatDelegate.MODE_NIGHT_AUTO_BATTERY,
+            )
         }
     }
 }

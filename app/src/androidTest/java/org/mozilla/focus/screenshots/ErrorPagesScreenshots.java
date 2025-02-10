@@ -5,12 +5,14 @@
 package org.mozilla.focus.screenshots;
 
 import android.os.Build;
+
 import androidx.test.espresso.web.webdriver.Locator;
 import androidx.test.runner.AndroidJUnit4;
 import androidx.test.uiautomator.UiObject;
 import androidx.test.uiautomator.UiSelector;
 
 import org.junit.ClassRule;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mozilla.focus.R;
@@ -33,6 +35,7 @@ import static androidx.test.espresso.web.webdriver.DriverAtoms.webClick;
 import static androidx.test.espresso.web.webdriver.DriverAtoms.webScrollIntoView;
 import static junit.framework.Assert.assertTrue;
 
+@Ignore("See: https://github.com/mozilla-mobile/mobile-test-eng/issues/305")
 @RunWith(AndroidJUnit4.class)
 public class ErrorPagesScreenshots extends ScreenshotTest {
 
@@ -59,7 +62,7 @@ public class ErrorPagesScreenshots extends ScreenshotTest {
     @Test
     public void takeScreenshotsOfErrorPages() {
         for (ErrorTypes error: ErrorTypes.values()) {
-            onView(withId(R.id.urlView))
+            onView(withId(R.id.mozac_browser_toolbar_edit_url_view))
                     .check(matches(isDisplayed()))
                     .check(matches(hasFocus()))
                     .perform(click(), replaceText("error:" + error.value), pressImeActionButton());
@@ -85,7 +88,7 @@ public class ErrorPagesScreenshots extends ScreenshotTest {
 
             Screengrab.screenshot(error.name());
 
-            onView(withId(R.id.display_url))
+            onView(withId(R.id.mozac_browser_toolbar_edit_url_view))
                     .check(matches(isDisplayed()))
                     .perform(click());
         }

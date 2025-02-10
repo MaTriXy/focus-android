@@ -8,38 +8,48 @@ import android.content.Context
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
-import kotlinx.android.synthetic.main.fragment_exceptions_domains.*
 import kotlinx.coroutines.Dispatchers.Main
-import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import org.mozilla.focus.GleanMetrics.TrackingProtectionExceptions
 import org.mozilla.focus.R
-import org.mozilla.focus.settings.BaseSettingsFragment
+import org.mozilla.focus.ext.components
+import org.mozilla.focus.ext.requireComponents
+import org.mozilla.focus.ext.showToolbar
+import org.mozilla.focus.state.AppAction
 import org.mozilla.focus.telemetry.TelemetryWrapper
+import kotlin.collections.forEach as withEach
 
 class ExceptionsRemoveFragment : ExceptionsListFragment() {
 
-    override fun onCreateOptionsMenu(menu: Menu?, inflater: MenuInflater?) {
-        inflater?.inflate(R.menu.menu_autocomplete_remove, menu)
+    override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+        menuInflater.inflate(R.menu.menu_autocomplete_remove, menu)
     }
 
-    override fun onOptionsItemSelected(item: MenuItem?): Boolean = when (item?.itemId) {
+    override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
         R.id.remove -> {
-            removeSelectedDomains(activity!!.applicationContext)
+            removeSelectedDomains(requireActivity().applicationContext)
             true
         }
-        else -> super.onOptionsItemSelected(item)
+        else -> false
     }
 
     private fun removeSelectedDomains(context: Context) {
-        val domains = (exceptionList.adapter as DomainListAdapter).selection()
-        TelemetryWrapper.removeExceptionDomains(domains.size)
-        if (domains.isNotEmpty()) {
-            launch(Main) {
-                async {
-                    ExceptionDomains.remove(context, domains)
-                }.await()
+        val exceptions = (binding.exceptionList.adapter as DomainListAdapter).selection()
+        TrackingProtectionExceptions.selectedItemsRemoved.record(
+            TrackingProtectionExceptions.SelectedItemsRemovedExtra(exceptions.size),
+        )
 
-                fragmentManager!!.popBackStack()
+        TelemetryWrapper.removeExceptionDomains(exceptions.size)
+
+        if (exceptions.isNotEmpty()) {
+            launch(Main) {
+                exceptions.withEach { exception ->
+                    context.components.trackingProtectionUseCases.removeException(exception)
+                }
+
+                requireComponents.appStore.dispatch(
+                    AppAction.NavigateUp(requireComponents.store.state.selectedTabId),
+                )
             }
         }
     }
@@ -49,8 +59,6 @@ class ExceptionsRemoveFragment : ExceptionsListFragment() {
     override fun onResume() {
         super.onResume()
 
-        val updater = activity as BaseSettingsFragment.ActionBarUpdater
-        updater.updateTitle(R.string.preference_autocomplete_title_remove)
-        updater.updateIcon(R.drawable.ic_back)
+        showToolbar(getString(R.string.preference_autocomplete_title_remove))
     }
 }

@@ -1,10 +1,12 @@
 package org.mozilla.focus.utils
 
+import android.app.Application
+import androidx.test.core.app.ApplicationProvider
+import mozilla.components.support.utils.ext.getPackageInfoCompat
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.RuntimeEnvironment
 import java.util.Locale
 
 @RunWith(RobolectricTestRunner::class)
@@ -24,8 +26,8 @@ class SupportUtilsTest {
     @Test
     @Throws(Exception::class)
     fun getSumoURLForTopic() {
-        val context = RuntimeEnvironment.application
-        val versionName = context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        val context = ApplicationProvider.getApplicationContext() as Application
+        val versionName = context.packageManager.getPackageInfoCompat(context.packageName, 0).versionName
 
         val testTopic = SupportUtils.SumoTopic.TRACKERS
         val testTopicStr = testTopic.topicStr
@@ -33,13 +35,13 @@ class SupportUtilsTest {
         Locale.setDefault(Locale.GERMANY)
         assertEquals(
             "https://support.mozilla.org/1/mobile/$versionName/Android/de-DE/$testTopicStr",
-            SupportUtils.getSumoURLForTopic(RuntimeEnvironment.application, testTopic)
+            SupportUtils.getSumoURLForTopic(ApplicationProvider.getApplicationContext(), testTopic),
         )
 
         Locale.setDefault(Locale.CANADA_FRENCH)
         assertEquals(
             "https://support.mozilla.org/1/mobile/$versionName/Android/fr-CA/$testTopicStr",
-            SupportUtils.getSumoURLForTopic(RuntimeEnvironment.application, testTopic)
+            SupportUtils.getSumoURLForTopic(ApplicationProvider.getApplicationContext(), testTopic),
         )
     }
 
@@ -53,13 +55,13 @@ class SupportUtilsTest {
         Locale.setDefault(Locale.UK)
         assertEquals(
             "https://www.mozilla.org/en-GB/about/manifesto/",
-            SupportUtils.manifestoURL
+            SupportUtils.manifestoURL,
         )
 
         Locale.setDefault(Locale.KOREA)
         assertEquals(
             "https://www.mozilla.org/ko-KR/about/manifesto/",
-            SupportUtils.manifestoURL
+            SupportUtils.manifestoURL,
         )
     }
 }

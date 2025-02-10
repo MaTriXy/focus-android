@@ -9,13 +9,15 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
-import android.net.Uri
 import android.os.Bundle
 import android.webkit.WebView
-
+import androidx.core.net.toUri
+import mozilla.components.service.glean.private.NoExtras
+import mozilla.components.support.utils.Browsers
+import mozilla.components.support.utils.ext.resolveActivityCompat
+import org.mozilla.focus.GleanMetrics.OpenWith
 import org.mozilla.focus.telemetry.TelemetryWrapper
 import org.mozilla.focus.utils.AppConstants
-import org.mozilla.focus.utils.Browsers
 
 /**
  * Helper activity that will open the Google Play store by following a redirect URL.
@@ -56,7 +58,7 @@ class InstallFirefoxActivity : Activity() {
         private const val REDIRECT_URL = "https://app.adjust.com/gs1ao4"
 
         fun resolveAppStore(context: Context): ActivityInfo? {
-            val resolveInfo = context.packageManager.resolveActivity(createStoreIntent(), 0)
+            val resolveInfo = context.packageManager.resolveActivityCompat(createStoreIntent(), 0)
 
             if (resolveInfo?.activityInfo == null) {
                 return null
@@ -65,12 +67,16 @@ class InstallFirefoxActivity : Activity() {
             return if (!resolveInfo.activityInfo.exported) {
                 // We are not allowed to launch this activity.
                 null
-            } else resolveInfo.activityInfo
+            } else {
+                resolveInfo.activityInfo
+            }
         }
 
         private fun createStoreIntent(): Intent {
-            return Intent(Intent.ACTION_VIEW,
-                    Uri.parse("market://details?id=" + Browsers.KnownBrowser.FIREFOX.packageName))
+            return Intent(
+                Intent.ACTION_VIEW,
+                ("market://details?id=" + Browsers.KnownBrowser.FIREFOX.packageName).toUri(),
+            )
         }
 
         fun open(context: Context) {
@@ -82,6 +88,8 @@ class InstallFirefoxActivity : Activity() {
                 val intent = Intent(context, InstallFirefoxActivity::class.java)
                 context.startActivity(intent)
             }
+
+            OpenWith.installFirefox.record(NoExtras())
 
             TelemetryWrapper.installFirefoxEvent()
         }

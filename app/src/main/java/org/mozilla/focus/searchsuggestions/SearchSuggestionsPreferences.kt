@@ -5,48 +5,41 @@
 package org.mozilla.focus.searchsuggestions
 
 import android.content.Context
-import android.preference.PreferenceManager
+import androidx.preference.PreferenceManager
 import org.mozilla.focus.R
-import mozilla.components.browser.search.SearchEngine
-import org.mozilla.focus.ext.components
+import org.mozilla.focus.ext.settings
 import org.mozilla.focus.telemetry.TelemetryWrapper
-import org.mozilla.focus.utils.Settings
 
 class SearchSuggestionsPreferences(private val context: Context) {
-    private val settings = Settings.getInstance(context)
+    private val settings = context.settings
     private val preferences = PreferenceManager.getDefaultSharedPreferences(context)
 
     fun searchSuggestionsEnabled(): Boolean = settings.shouldShowSearchSuggestions()
     fun hasUserToggledSearchSuggestions(): Boolean = settings.userHasToggledSearchSuggestions()
     fun userHasDismissedNoSuggestionsMessage(): Boolean = settings.userHasDismissedNoSuggestionsMessage()
 
-    fun getSearchEngine(): SearchEngine {
-        return context.components.searchEngineManager.getDefaultSearchEngine(
-                context, settings.defaultSearchEngineName)
-    }
-
     fun enableSearchSuggestions() {
         preferences.edit()
-                .putBoolean(TOGGLED_SUGGESTIONS_PREF, true)
-                .putBoolean(context.resources.getString(R.string.pref_key_show_search_suggestions), true)
-                .apply()
+            .putBoolean(TOGGLED_SUGGESTIONS_PREF, true)
+            .putBoolean(context.resources.getString(R.string.pref_key_show_search_suggestions), true)
+            .apply()
 
         TelemetryWrapper.respondToSearchSuggestionPrompt(true)
     }
 
     fun disableSearchSuggestions() {
         preferences.edit()
-                .putBoolean(TOGGLED_SUGGESTIONS_PREF, true)
-                .putBoolean(context.resources.getString(R.string.pref_key_show_search_suggestions), false)
-                .apply()
+            .putBoolean(TOGGLED_SUGGESTIONS_PREF, true)
+            .putBoolean(context.resources.getString(R.string.pref_key_show_search_suggestions), false)
+            .apply()
 
         TelemetryWrapper.respondToSearchSuggestionPrompt(false)
     }
 
     fun dismissNoSuggestionsMessage() {
         preferences.edit()
-                .putBoolean(DISMISSED_NO_SUGGESTIONS_PREF, true)
-                .apply()
+            .putBoolean(DISMISSED_NO_SUGGESTIONS_PREF, true)
+            .apply()
     }
 
     companion object {

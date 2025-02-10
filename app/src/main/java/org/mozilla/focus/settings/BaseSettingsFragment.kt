@@ -4,40 +4,32 @@
 
 package org.mozilla.focus.settings
 
-import android.content.Context
 import android.os.Bundle
-import androidx.fragment.app.Fragment
-import androidx.preference.PreferenceFragmentCompat
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.View
-import android.widget.ListView
+import androidx.core.view.MenuHost
+import androidx.core.view.MenuProvider
+import androidx.lifecycle.Lifecycle
+import androidx.preference.PreferenceFragmentCompat
 import org.mozilla.focus.R
+import org.mozilla.focus.activity.MainActivity
 
-abstract class BaseSettingsFragment : PreferenceFragmentCompat() {
-
-    interface ActionBarUpdater {
-        fun updateTitle(titleResId: Int)
-        fun updateIcon(iconResId: Int)
-    }
-
+abstract class BaseSettingsFragment : PreferenceFragmentCompat(), MenuProvider {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        val list = view.findViewById<View>(android.R.id.list) as? ListView
-        list?.divider = null
+
+        val menuHost: MenuHost = requireHost() as MenuHost
+        menuHost.addMenuProvider(this, viewLifecycleOwner, Lifecycle.State.RESUMED)
+
+        // Customize status bar background if the parent activity can be casted to MainActivity
+        (requireActivity() as? MainActivity)?.customizeStatusBar(R.color.settings_background)
     }
 
-    override fun onAttach(context: Context?) {
-        super.onAttach(context)
-        if (activity !is ActionBarUpdater) {
-            throw IllegalArgumentException("Parent activity must implement ActionBarUpdater")
-        }
+    override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+        // no-op
     }
 
-    protected fun getActionBarUpdater() = activity as ActionBarUpdater
-
-    protected fun navigateToFragment(fragment: Fragment) {
-        fragmentManager!!.beginTransaction()
-            .replace(R.id.container, fragment)
-            .addToBackStack(null)
-            .commit()
-    }
+    override fun onMenuItemSelected(menuItem: MenuItem): Boolean = false
 }

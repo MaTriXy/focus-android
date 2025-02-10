@@ -5,18 +5,29 @@
 package org.mozilla.focus.settings
 
 import android.os.Bundle
-import androidx.preference.Preference
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
+import androidx.preference.Preference
+import mozilla.components.browser.state.state.SearchState
+import mozilla.components.browser.state.state.availableSearchEngines
+import mozilla.components.browser.state.state.searchEngines
+import mozilla.components.browser.state.store.BrowserStore
+import mozilla.components.feature.search.SearchUseCases
+import mozilla.components.service.glean.private.NoExtras
+import org.mozilla.focus.GleanMetrics.SearchEngines
 import org.mozilla.focus.R
-import org.mozilla.focus.search.CustomSearchEngineStore
+import org.mozilla.focus.ext.requireComponents
+import org.mozilla.focus.ext.showToolbar
 import org.mozilla.focus.search.RadioSearchEngineListPreference
+import org.mozilla.focus.state.AppAction
+import org.mozilla.focus.state.Screen
 import org.mozilla.focus.telemetry.TelemetryWrapper
+import kotlin.collections.forEach as withEach
 
 class InstalledSearchEnginesSettingsFragment : BaseSettingsFragment() {
     override fun onCreatePreferences(p0: Bundle?, p1: String?) {
-        setHasOptionsMenu(true)
+        //
     }
 
     companion object {
@@ -26,46 +37,57 @@ class InstalledSearchEnginesSettingsFragment : BaseSettingsFragment() {
 
     override fun onResume() {
         super.onResume()
-        getActionBarUpdater().apply {
-            updateTitle(R.string.preference_search_installed_search_engines)
-            updateIcon(R.drawable.ic_back)
-        }
 
-        if (languageChanged)
+        showToolbar(getString(R.string.preference_choose_search_engine))
+
+        if (languageChanged) {
             restoreSearchEngines()
-        else
+        } else {
             refetchSearchEngines()
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
-        super.onCreateOptionsMenu(menu, inflater)
-        inflater.inflate(R.menu.menu_search_engines, menu)
-    }
-
-    override fun onPrepareOptionsMenu(menu: Menu?) {
-        super.onPrepareOptionsMenu(menu)
-        menu?.findItem(R.id.menu_restore_default_engines)?.let {
-            it.isEnabled = !CustomSearchEngineStore.hasAllDefaultSearchEngines(activity!!)
         }
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
+    override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+        super.onCreateMenu(menu, menuInflater)
+        menuInflater.inflate(R.menu.menu_search_engines, menu)
+    }
+
+    override fun onPrepareMenu(menu: Menu) {
+        super.onPrepareMenu(menu)
+        menu.findItem(R.id.menu_restore_default_engines)?.let {
+            it.isEnabled = !requireComponents.store.state.search.hasDefaultSearchEnginesOnly()
+        }
+    }
+
+    override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
+        val currentEnginesCount = requireComponents.store.state.search.searchEngines.size
+
+        return when (menuItem.itemId) {
             R.id.menu_remove_search_engines -> {
-                navigateToFragment(RemoveSearchEnginesSettingsFragment())
+                requireComponents.appStore.dispatch(
+                    AppAction.OpenSettings(Screen.Settings.Page.SearchRemove),
+                )
+                SearchEngines.openRemoveScreen.record(
+                    SearchEngines.OpenRemoveScreenExtra(currentEnginesCount),
+                )
+
                 TelemetryWrapper.menuRemoveEnginesEvent()
+
                 true
             }
             R.id.menu_restore_default_engines -> {
                 restoreSearchEngines()
+                SearchEngines.restoreDefaultEngines.record(
+                    SearchEngines.RestoreDefaultEnginesExtra(currentEnginesCount),
+                )
                 true
             }
-            else -> super.onOptionsItemSelected(item)
+            else -> false
         }
     }
 
     private fun restoreSearchEngines() {
-        CustomSearchEngineStore.restoreDefaultSearchEngines(activity!!)
+        restoreSearchDefaults(requireComponents.store, requireComponents.searchUseCases)
         refetchSearchEngines()
         TelemetryWrapper.menuRestoreEnginesEvent()
         languageChanged = false
@@ -74,8 +96,13 @@ class InstalledSearchEnginesSettingsFragment : BaseSettingsFragment() {
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
         return when (preference.key) {
             resources.getString(R.string.pref_key_manual_add_search_engine) -> {
-                navigateToFragment(ManualAddSearchEngineSettingsFragment())
+                requireComponents.appStore.dispatch(
+                    AppAction.OpenSettings(page = Screen.Settings.Page.SearchAdd),
+                )
+                SearchEngines.addEngineTapped.record(NoExtras())
+
                 TelemetryWrapper.menuAddSearchEngineEvent()
+
                 return true
             }
             else -> {
@@ -92,7 +119,26 @@ class InstalledSearchEnginesSettingsFragment : BaseSettingsFragment() {
         preferenceScreen?.removeAll()
         addPreferencesFromResource(R.xml.search_engine_settings)
 
-        val pref = preferenceScreen.findPreference(resources.getString(R.string.pref_key_radio_search_engine_list))
-        (pref as RadioSearchEngineListPreference).refetchSearchEngines()
+        val pref: RadioSearchEngineListPreference? = preferenceScreen.findPreference(
+            resources.getString(R.string.pref_key_radio_search_engine_list),
+        )
+        pref?.refetchSearchEngines()
+    }
+}
+
+private fun SearchState.hasDefaultSearchEnginesOnly(): Boolean {
+    return availableSearchEngines.isEmpty() && additionalSearchEngines.isEmpty() && customSearchEngines.isEmpty()
+}
+
+private fun restoreSearchDefaults(store: BrowserStore, useCases: SearchUseCases) {
+    store.state.search.customSearchEngines.withEach { searchEngine ->
+        useCases.removeSearchEngine(
+            searchEngine,
+        )
+    }
+    store.state.search.hiddenSearchEngines.withEach { searchEngine ->
+        useCases.addSearchEngine(
+            searchEngine,
+        )
     }
 }

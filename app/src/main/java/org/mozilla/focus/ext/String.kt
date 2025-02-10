@@ -4,7 +4,9 @@
 
 package org.mozilla.focus.ext
 
-import android.net.Uri
+import androidx.compose.ui.graphics.Color
+import androidx.core.net.toUri
+import mozilla.components.support.ktx.android.net.hostWithoutCommonPrefixes
 import org.mozilla.focus.utils.UrlUtils
 
 // Extension functions for the String class
@@ -21,7 +23,7 @@ fun String.beautifyUrl(): String {
 
     val beautifulUrl = StringBuilder()
 
-    val uri = Uri.parse(this)
+    val uri = this.toUri()
 
     // Use only the truncated host name
 
@@ -35,7 +37,7 @@ fun String.beautifyUrl(): String {
     // Append the truncated path
 
     val truncatedPath = uri.truncatedPath()
-    if (!truncatedPath.isNullOrEmpty()) {
+    if (truncatedPath.isNotEmpty()) {
         beautifulUrl.append(truncatedPath)
     }
 
@@ -59,19 +61,15 @@ fun String.beautifyUrl(): String {
 }
 
 /**
- * If this string starts with the one or more of the given [prefixes] (in order and ignoring case),
- * returns a copy of this string with the prefixes removed. Otherwise, returns this string.
+ * Tries to parse and get root domain part if [String] is a valid URL.
  */
-fun String.removePrefixesIgnoreCase(vararg prefixes: String): String {
-    var value = this
-    var lower = this.toLowerCase()
+val String.tryGetRootDomain: String
+    get() =
+        this.toUri().hostWithoutCommonPrefixes?.replaceAfter(".", "")?.removeSuffix(".")
+            ?.replaceFirstChar { it.uppercase() } ?: this
 
-    prefixes.forEach {
-        if (lower.startsWith(it.toLowerCase())) {
-            value = value.substring(it.length)
-            lower = lower.substring(it.length)
-        }
-    }
-
-    return value
-}
+/**
+ * Tries to parse a color string and return a [Color]
+ */
+val String.color: Color
+    get() = Color(android.graphics.Color.parseColor(this))

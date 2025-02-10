@@ -10,13 +10,10 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Rect
-import android.net.Uri
 import android.os.Build
-import androidx.vectordrawable.graphics.drawable.VectorDrawableCompat
-import androidx.core.content.ContextCompat
 import android.util.TypedValue
-
+import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import org.mozilla.focus.R
 import org.mozilla.focus.utils.UrlUtils
 
@@ -25,7 +22,6 @@ class IconGenerator {
     companion object {
         private val TEXT_SIZE_DP = 36f
         private val DEFAULT_ICON_CHAR = '?'
-        private const val SEARCH_ICON_FRAME = 0.15
 
         /**
          * See [generateAdaptiveLauncherIcon] for more details.
@@ -41,10 +37,11 @@ class IconGenerator {
          * on top of a generic launcher icon shape that we provide.
          */
         private fun generateCharacterIcon(context: Context, character: Char) =
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                    generateAdaptiveLauncherIcon(context, character)
-                else
-                    generateLauncherIconPreOreo(context, character)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                generateAdaptiveLauncherIcon(context, character)
+            } else {
+                generateLauncherIconPreOreo(context, character)
+            }
 
         /*
          * This method needs to be separate from generateAdaptiveLauncherIcon so that we can generate
@@ -56,27 +53,6 @@ class IconGenerator {
             options.inMutable = true
             val shape = BitmapFactory.decodeResource(context.resources, R.drawable.ic_homescreen_shape, options)
             return drawCharacterOnBitmap(context, character, shape)
-        }
-
-        @JvmStatic
-        fun generateSearchEngineIcon(context: Context): Bitmap {
-            val options = BitmapFactory.Options()
-            options.inMutable = true
-            val shape = BitmapFactory.decodeResource(context.resources, R.drawable.ic_search_engine_shape, options)
-            return drawVectorOnBitmap(context, R.drawable.ic_search, shape, SEARCH_ICON_FRAME)
-        }
-
-        private fun drawVectorOnBitmap(context: Context, vectorId: Int, bitmap: Bitmap, frame: Double): Bitmap {
-            val canvas = Canvas(bitmap)
-            // Select the area to draw with a frame
-            val rect = Rect((frame * canvas.width).toInt(),
-                    (frame * canvas.height).toInt(),
-                    ((1 - frame) * canvas.width).toInt(),
-                    ((1 - frame) * canvas.height).toInt())
-            val icon = VectorDrawableCompat.create(context.resources, vectorId, null)
-            icon!!.bounds = rect
-            icon.draw(canvas)
-            return bitmap
         }
 
         /**
@@ -104,17 +80,22 @@ class IconGenerator {
             val paint = Paint()
 
             val textSize = TypedValue.applyDimension(
-                    TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DP, context.resources.displayMetrics)
+                TypedValue.COMPLEX_UNIT_DIP,
+                TEXT_SIZE_DP,
+                context.resources.displayMetrics,
+            )
 
             paint.color = Color.WHITE
             paint.textAlign = Paint.Align.CENTER
             paint.textSize = textSize
             paint.isAntiAlias = true
 
-            canvas.drawText(character.toString(),
-                    canvas.width / 2.0f,
-                    canvas.height / 2.0f - (paint.descent() + paint.ascent()) / 2.0f,
-                    paint)
+            canvas.drawText(
+                character.toString(),
+                canvas.width / 2.0f,
+                canvas.height / 2.0f - (paint.descent() + paint.ascent()) / 2.0f,
+                paint,
+            )
 
             return bitmap
         }
@@ -126,7 +107,7 @@ class IconGenerator {
          */
         @JvmStatic
         fun getRepresentativeCharacter(url: String?): Char {
-            val firstChar = getRepresentativeSnippet(url)?.find { it.isLetterOrDigit() }?.toUpperCase()
+            val firstChar = getRepresentativeSnippet(url)?.find { it.isLetterOrDigit() }?.uppercaseChar()
             return (firstChar ?: DEFAULT_ICON_CHAR)
         }
 
@@ -138,7 +119,7 @@ class IconGenerator {
         private fun getRepresentativeSnippet(url: String?): String? {
             if (url == null || url.isEmpty()) return null
 
-            val uri = Uri.parse(url)
+            val uri = url.toUri()
             val snippet = if (!uri.host.isNullOrEmpty()) {
                 uri.host // cached by Uri class.
             } else if (!uri.path.isNullOrEmpty()) { // The uri may not have a host for e.g. file:// uri

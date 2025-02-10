@@ -10,6 +10,13 @@
     android:orientation="vertical"
     tools:context="org.mozilla.focus.searchsuggestions.ui.SearchSuggestionsFragment">
 
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/scrollView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="vertical"
+        android:fadeScrollbars="false">
+
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/enable_search_suggestions_container"
         android:layout_width="match_parent"
@@ -24,9 +31,12 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="@string/enable_search_suggestion_title"
+            android:fontFamily="@font/metropolis_bold"
+            android:letterSpacing="0.03"
+            android:lineSpacingExtra="1sp"
+            android:text="@string/enable_search_suggestion_title2"
             android:textColor="@color/searchSuggestionPromptTitleColor"
-            android:textSize="14sp"
+            android:textSize="16sp"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
@@ -35,44 +45,45 @@
             android:id="@+id/enable_search_suggestions_subtitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="12dp"
             android:layout_marginEnd="24dp"
-            android:layout_marginBottom="8dp"
+            android:layout_marginBottom="15dp"
             android:clickable="true"
             android:focusable="true"
             android:lineSpacingExtra="4sp"
-            android:text="@string/enable_search_suggestion_subtitle"
+            android:text="@string/enable_search_suggestion_description"
             android:textColor="@color/searchSuggestionPromptSubtitleColor"
-            android:textSize="12sp"
+            android:textSize="14sp"
             app:layout_constraintBottom_toTopOf="@+id/disable_search_suggestions_button"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/enable_search_suggestions_title" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/disable_search_suggestions_button"
+            style="@style/MetropolisButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:minWidth="48dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginEnd="20dp"
             android:text="@string/enable_search_suggestions_no"
             android:textColor="@color/searchSuggestionPromptButtonTextColor"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toStartOf="@+id/enable_search_suggestions_button" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/enable_search_suggestions_button"
+            style="@style/MetropolisButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="4dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:minWidth="48dp"
+            android:layout_marginTop="10dp"
+            android:layout_marginEnd="20dp"
             android:text="@string/enable_search_suggestions_yes"
             android:textColor="@color/searchSuggestionPromptButtonTextColor"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
     </androidx.constraintlayout.widget.ConstraintLayout>
+    </androidx.core.widget.NestedScrollView>
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/no_suggestions_container"
@@ -107,38 +118,9 @@
             app:layout_constraintTop_toBottomOf="@id/no_suggestions_message" />
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <androidx.core.widget.NestedScrollView
+    <androidx.compose.ui.platform.ComposeView
+        android:id="@+id/search_suggestions_view"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
-
-        <LinearLayout
-            android:background="@color/searchHintBackgroundColor"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" >
-
-            <TextView
-                android:id="@+id/searchView"
-                android:layout_width="match_parent"
-                android:layout_height="54dp"
-                android:background="?android:attr/selectableItemBackground"
-                android:drawableStart="@drawable/ic_search"
-                android:drawablePadding="16dp"
-                android:ellipsize="end"
-                android:gravity="center_vertical"
-                android:lines="1"
-                android:padding="16dp"
-                android:text="…"
-                android:textColor="@color/searchHintTextColor"
-                android:textSize="14sp" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/suggestionList"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:nestedScrollingEnabled="false" />
-        </LinearLayout>
-    </androidx.core.widget.NestedScrollView>
+        android:layout_height="match_parent" />
 
 </org.mozilla.focus.widget.ResizableKeyboardLinearLayout>

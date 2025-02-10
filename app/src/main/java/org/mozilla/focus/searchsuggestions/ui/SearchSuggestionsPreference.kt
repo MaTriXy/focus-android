@@ -14,13 +14,15 @@ import org.mozilla.focus.utils.SupportUtils
  * Switch preference for enabling/disabling autocompletion for default domains that ship with the app.
  */
 class SearchSuggestionsPreference(
-    context: Context?,
-    attrs: AttributeSet?
+    context: Context,
+    attrs: AttributeSet?,
 ) : LearnMoreSwitchPreference(context, attrs) {
     override fun getLearnMoreUrl(): String =
-            SupportUtils.getSumoURLForTopic(context, SupportUtils.SumoTopic.SEARCH_SUGGESTIONS)
+        SupportUtils.getSumoURLForTopic(context, SupportUtils.SumoTopic.SEARCH_SUGGESTIONS)
 
-    override fun getDescription(): String? =
-            context.getString(R.string.preference_show_search_suggestions_summary,
-                    context.getString(R.string.app_name))
+    override fun getDescription(): String =
+        context.getString(
+            R.string.preference_show_search_suggestions_summary,
+            context.getString(R.string.app_name),
+        )
 }

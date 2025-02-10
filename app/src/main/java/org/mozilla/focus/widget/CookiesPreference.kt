@@ -5,19 +5,23 @@
 package org.mozilla.focus.widget
 
 import android.content.Context
+import android.util.AttributeSet
+import android.view.View
+import androidx.core.view.isVisible
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceViewHolder
-import android.util.AttributeSet
-import org.mozilla.focus.utils.Settings
+import org.mozilla.focus.R
+import org.mozilla.focus.ext.settings
 
 /**
  * Autocomplete preference that will show a sub screen to configure the autocomplete behavior.
  */
-class CookiesPreference(context: Context?, attrs: AttributeSet?) : ListPreference(context, attrs) {
+class CookiesPreference(context: Context, attrs: AttributeSet?) : ListPreference(context, attrs) {
 
-    override fun onBindViewHolder(holder: PreferenceViewHolder?) {
+    override fun onBindViewHolder(holder: PreferenceViewHolder) {
         super.onBindViewHolder(holder)
         updateSummary()
+        showIcon(holder)
     }
 
     override fun notifyChanged() {
@@ -26,7 +30,17 @@ class CookiesPreference(context: Context?, attrs: AttributeSet?) : ListPreferenc
     }
 
     fun updateSummary() {
-        val settings = Settings.getInstance(context)
-        super.setSummary(settings.shouldBlockCookiesValue())
+        val settings = context.settings
+
+        val cookieOptionIndex =
+            context.resources.getStringArray(R.array.cookies_options_entry_values)
+                .asList().indexOf(settings.shouldBlockCookiesValue())
+        this.summary =
+            context.resources.getStringArray(R.array.cookies_options_entries)[cookieOptionIndex]
+    }
+
+    private fun showIcon(holder: PreferenceViewHolder?) {
+        val widgetFrame: View? = holder?.findViewById(android.R.id.widget_frame)
+        widgetFrame?.isVisible = true
     }
 }

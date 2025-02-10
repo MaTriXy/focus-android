@@ -12,20 +12,25 @@ import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.net.Uri;
 import android.os.Bundle;
-import androidx.annotation.LayoutRes;
-import androidx.annotation.NonNull;
-import com.google.android.material.bottomsheet.BottomSheetBehavior;
-import com.google.android.material.bottomsheet.BottomSheetDialog;
-import androidx.appcompat.app.AppCompatDialogFragment;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
 import android.view.ContextThemeWrapper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 
+import androidx.annotation.LayoutRes;
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatDialogFragment;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import com.google.android.material.bottomsheet.BottomSheetBehavior;
+import com.google.android.material.bottomsheet.BottomSheetDialog;
+
+import org.mozilla.focus.GleanMetrics.OpenWith;
 import org.mozilla.focus.R;
+import org.mozilla.focus.ext.ContextKt;
+import org.mozilla.focus.telemetry.TelemetryWrapper;
 
 public class OpenWithFragment extends AppCompatDialogFragment implements AppAdapter.OnAppSelectedListener {
     public static final String FRAGMENT_TAG = "open_with";
@@ -93,7 +98,7 @@ public class OpenWithFragment extends AppCompatDialogFragment implements AppAdap
 
             // The support library makes the bottomsheet full width on all devices (and then uses a 16:9
             // keyline). On tablets, the system bottom sheets use a narrower width - lets do that too:
-            if (getContext().getResources().getBoolean(R.bool.is_tablet)) {
+            if (ContextKt.isTablet(getContext())) {
                 int width = getContext().getResources().getDimensionPixelSize(R.dimen.tablet_bottom_sheet_width);
                 final Window window = getWindow();
                 if (window != null) {
@@ -121,7 +126,7 @@ public class OpenWithFragment extends AppCompatDialogFragment implements AppAdap
 
         @Override
         public void show() {
-            if (getContext().getResources().getBoolean(R.bool.is_tablet)) {
+            if (ContextKt.isTablet(getContext())) {
                 final int peekHeight = getContext().getResources().getDimensionPixelSize(R.dimen.tablet_bottom_sheet_peekheight);
 
                 BottomSheetBehavior<View> bsBehaviour = BottomSheetBehavior.from((View) contentView.getParent());
@@ -135,8 +140,14 @@ public class OpenWithFragment extends AppCompatDialogFragment implements AppAdap
     @Override
     public void onAppSelected(AppAdapter.App app) {
         final Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(getArguments().getString(ARGUMENT_URL)));
-        intent.setPackage(app.getPackageName());
+        intent.setClassName(app.getPackageName(), app.getActivityName());
         startActivity(intent);
+
+        OpenWith.INSTANCE.listItemTapped().record(new OpenWith.ListItemTappedExtra(app.getPackageName().contains("mozilla")));
+
+        if (app.getPackageName().contains("firefox")) {
+            TelemetryWrapper.openFirefoxEvent();
+        }
 
         dismiss();
     }

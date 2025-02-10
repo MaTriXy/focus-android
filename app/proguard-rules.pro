@@ -15,33 +15,6 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
-# Add any project specific keep options here:
-
-# The Buddybuild SDK builds using ACRA 4.6.4, which is afflictted
-# by the following bug: https://github.com/ACRA/acra/issues/301
-# That is fixed in ACRA 4.7, but we need to wait for Buddybuild to upgrade
-# for that to be fixed. (Note: this only affects BuddyBuild builds where
-# the BuddyBuild SDK is enabled, and is not visible in local builds. You can
-# enable the BuddyBuild SDK per branch for testing, by default it is only
-# used for master.)
--dontwarn org.acra.ErrorReporter
-
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
-
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
-
-
 ####################################################################################################
 # Adjust
 ####################################################################################################
@@ -132,14 +105,15 @@
 }
 
 ####################################################################################################
+# Mozilla Application Services
+####################################################################################################
+
+-keep class mozilla.appservices.** { *; }
+
+####################################################################################################
 # Kotlinx
 ####################################################################################################
 
--keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
--keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
--keepclassmembernames class kotlinx.** {
-    volatile <fields>;
-}
 -dontwarn kotlinx.atomicfu.**
 
 ####################################################################################################
@@ -151,3 +125,30 @@
 -dontwarn java.beans.BeanInfo
 -dontwarn java.beans.IntrospectionException
 -dontwarn java.beans.FeatureDescriptor
+
+####################################################################################################
+# REMOVE all Log messages except warnings and errors
+####################################################################################################
+-assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(java.lang.String, int);
+    public static int v(...);
+    public static int i(...);
+    public static int d(...);
+}
+
+####################################################################################################
+# kotlinx.coroutines: use the fast service loader to init MainDispatcherLoader by including a rule
+# to rewrite this property to return true:
+# https://github.com/Kotlin/kotlinx.coroutines/blob/8c98180f177bbe4b26f1ed9685a9280fea648b9c/kotlinx-coroutines-core/jvm/src/internal/MainDispatchers.kt#L19
+#
+# R8 is expected to optimize the default implementation to avoid a performance issue but a bug in R8
+# as bundled with AGP v7.0.0 causes this optimization to fail so we use the fast service loader instead. See:
+# https://github.com/mozilla-mobile/focus-android/issues/5102#issuecomment-897854121
+#
+# The fast service loader appears to be as performant as the R8 optimization so it's not worth the
+# churn to later remove this workaround. If needed, the upstream fix is being handled in
+# https://issuetracker.google.com/issues/196302685
+####################################################################################################
+-assumenosideeffects class kotlinx.coroutines.internal.MainDispatcherLoader {
+    boolean FAST_SERVICE_LOADER_ENABLED return true;
+}

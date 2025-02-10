@@ -8,11 +8,11 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.Transformations.map
-import android.graphics.Typeface
-import android.text.Spannable
-import android.text.SpannableStringBuilder
-import android.text.style.StyleSpan
+import mozilla.components.browser.state.state.selectedOrDefaultSearchEngine
+import mozilla.components.feature.search.ext.canProvideSearchSuggestions
+import mozilla.components.service.glean.private.NoExtras
+import org.mozilla.focus.FocusApplication
+import org.mozilla.focus.GleanMetrics.SearchSuggestions
 
 sealed class State {
     data class Disabled(val givePrompt: Boolean) : State()
@@ -21,11 +21,10 @@ sealed class State {
 }
 
 class SearchSuggestionsViewModel(application: Application) : AndroidViewModel(application) {
-    private val fetcher: SearchSuggestionsFetcher
     private val preferences: SearchSuggestionsPreferences = SearchSuggestionsPreferences(application)
 
-    private val _selectedSearchSuggestion = MutableLiveData<String>()
-    val selectedSearchSuggestion: LiveData<String> = _selectedSearchSuggestion
+    private val _selectedSearchSuggestion = MutableLiveData<String?>()
+    val selectedSearchSuggestion: LiveData<String?> = _selectedSearchSuggestion
 
     private val _searchQuery = MutableLiveData<String>()
     val searchQuery: LiveData<String> = _searchQuery
@@ -33,36 +32,46 @@ class SearchSuggestionsViewModel(application: Application) : AndroidViewModel(ap
     private val _state = MutableLiveData<State>()
     val state: LiveData<State> = _state
 
-    val suggestions: LiveData<List<SpannableStringBuilder>>
+    private val _autocompleteSuggestion = MutableLiveData<String?>()
+    val autocompleteSuggestion: LiveData<String?> = _autocompleteSuggestion
+
     var alwaysSearch = false
         private set
 
-    init {
-        fetcher = SearchSuggestionsFetcher(preferences.getSearchEngine())
+    fun selectSearchSuggestion(
+        suggestion: String,
+        defaultSearchEngineName: String,
+        alwaysSearch: Boolean = false,
+    ) {
+        this.alwaysSearch = alwaysSearch
+        _selectedSearchSuggestion.postValue(suggestion)
 
-        suggestions = map(fetcher.results) { result ->
-            val style = StyleSpan(Typeface.BOLD)
-            val endIndex = result.query.length
-
-            result.suggestions.map { suggestion ->
-                SpannableStringBuilder(suggestion).apply {
-                    setSpan(style, 0, minOf(endIndex, suggestion.length), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                }
-            }
+        if (suggestion == searchQuery.value) {
+            SearchSuggestions.searchTapped.record(
+                SearchSuggestions.SearchTappedExtra(defaultSearchEngineName),
+            )
+        } else {
+            SearchSuggestions.suggestionTapped.record(
+                SearchSuggestions.SuggestionTappedExtra(defaultSearchEngineName),
+            )
         }
     }
 
-    fun selectSearchSuggestion(suggestion: String, alwaysSearch: Boolean = false) {
-        this.alwaysSearch = alwaysSearch
-        _selectedSearchSuggestion.postValue(suggestion)
+    fun clearSearchSuggestion() {
+        _selectedSearchSuggestion.postValue(null)
+    }
+
+    fun setAutocompleteSuggestion(text: String) {
+        _autocompleteSuggestion.postValue(text)
+        SearchSuggestions.autocompleteArrowTapped.record(NoExtras())
+    }
+
+    fun clearAutocompleteSuggestion() {
+        _autocompleteSuggestion.postValue(null)
     }
 
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
-
-        if (state.value === State.ReadyForSuggestions) {
-            fetcher.requestSuggestions(query)
-        }
     }
 
     fun enableSearchSuggestions() {
@@ -82,16 +91,16 @@ class SearchSuggestionsViewModel(application: Application) : AndroidViewModel(ap
     }
 
     fun refresh() {
-        val engine = preferences.getSearchEngine()
-        fetcher.updateSearchEngine(engine)
         updateState()
     }
 
     private fun updateState() {
         val enabled = preferences.searchSuggestionsEnabled()
 
+        val store = getApplication<FocusApplication>().components.store
+
         val state = if (enabled) {
-            if (fetcher.canProvideSearchSuggestions) {
+            if (store.state.search.selectedOrDefaultSearchEngine?.canProvideSearchSuggestions == true) {
                 State.ReadyForSuggestions
             } else {
                 val givePrompt = !preferences.userHasDismissedNoSuggestionsMessage()

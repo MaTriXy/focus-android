@@ -15,12 +15,16 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import mozilla.components.service.glean.private.NoExtras
 import mozilla.components.support.utils.ThreadUtils
-
+import mozilla.components.support.utils.ext.stopForegroundCompat
+import org.mozilla.focus.GleanMetrics.Notifications
+import org.mozilla.focus.GleanMetrics.RecentApps
 import org.mozilla.focus.R
 import org.mozilla.focus.activity.MainActivity
 import org.mozilla.focus.ext.components
 import org.mozilla.focus.telemetry.TelemetryWrapper
+import org.mozilla.focus.utils.IntentUtils
 
 /**
  * As long as a session is active this service will keep the notification (and our process) alive.
@@ -30,7 +34,7 @@ class SessionNotificationService : Service() {
     private var shouldSendTaskRemovedTelemetry = true
 
     override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
-        val action = intent.action ?: return Service.START_NOT_STICKY
+        val action = intent.action ?: return START_NOT_STICKY
 
         when (action) {
             ACTION_START -> {
@@ -39,30 +43,41 @@ class SessionNotificationService : Service() {
             }
 
             ACTION_ERASE -> {
+                Notifications.notificationTapped.record(NoExtras())
+
                 TelemetryWrapper.eraseNotificationEvent()
+
                 shouldSendTaskRemovedTelemetry = false
 
-                components.sessionManager.removeAndCloseAllSessions()
+                if (VisibilityLifeCycleCallback.isInBackground(this)) {
+                    VisibilityLifeCycleCallback.finishAndRemoveTaskIfInBackground(this)
+                } else {
+                    val eraseIntent = Intent(this, MainActivity::class.java)
 
-                VisibilityLifeCycleCallback.finishAndRemoveTaskIfInBackground(this)
+                    eraseIntent.action = MainActivity.ACTION_ERASE
+                    eraseIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+
+                    startActivity(eraseIntent)
+                }
             }
 
             else -> throw IllegalStateException("Unknown intent: $intent")
         }
 
-        return Service.START_NOT_STICKY
+        return START_NOT_STICKY
     }
 
     override fun onTaskRemoved(rootIntent: Intent) {
-
         // Do not double send telemetry for notification erase event
         if (shouldSendTaskRemovedTelemetry) {
+            RecentApps.appRemovedFromList.record(NoExtras())
+
             TelemetryWrapper.eraseTaskRemoved()
         }
 
-        components.sessionManager.removeAndCloseAllSessions()
+        components.tabsUseCases.removeAllTabs()
 
-        stopForeground(true)
+        stopForegroundCompat(true)
         stopSelf()
     }
 
@@ -76,46 +91,49 @@ class SessionNotificationService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .setShowWhen(false)
             .setLocalOnly(true)
-            .setColor(ContextCompat.getColor(this, R.color.colorErase))
+            .setColor(ContextCompat.getColor(this, R.color.accentBright))
             .addAction(
                 NotificationCompat.Action(
                     R.drawable.ic_notification,
                     getString(R.string.notification_action_open),
-                    createOpenActionIntent()
-                )
+                    createOpenActionIntent(),
+                ),
             )
             .addAction(
                 NotificationCompat.Action(
-                    R.drawable.ic_delete,
+                    R.drawable.mozac_ic_delete,
                     getString(R.string.notification_action_erase_and_open),
-                    createOpenAndEraseActionIntent()
-                )
+                    createOpenAndEraseActionIntent(),
+                ),
             )
             .build()
     }
 
     private fun createNotificationIntent(): PendingIntent {
+        val notificationIntentFlags = IntentUtils.defaultIntentPendingFlags or PendingIntent.FLAG_ONE_SHOT
         val intent = Intent(this, SessionNotificationService::class.java)
         intent.action = ACTION_ERASE
 
-        return PendingIntent.getService(this, 0, intent, PendingIntent.FLAG_ONE_SHOT)
+        return PendingIntent.getService(this, 0, intent, notificationIntentFlags)
     }
 
     private fun createOpenActionIntent(): PendingIntent {
+        val openActionIntentFlags = IntentUtils.defaultIntentPendingFlags or PendingIntent.FLAG_UPDATE_CURRENT
         val intent = Intent(this, MainActivity::class.java)
         intent.action = MainActivity.ACTION_OPEN
 
-        return PendingIntent.getActivity(this, 1, intent, PendingIntent.FLAG_UPDATE_CURRENT)
+        return PendingIntent.getActivity(this, 1, intent, openActionIntentFlags)
     }
 
     private fun createOpenAndEraseActionIntent(): PendingIntent {
+        val openAndEraseActionIntentFlags = IntentUtils.defaultIntentPendingFlags or PendingIntent.FLAG_UPDATE_CURRENT
         val intent = Intent(this, MainActivity::class.java)
 
         intent.action = MainActivity.ACTION_ERASE
         intent.putExtra(MainActivity.EXTRA_NOTIFICATION, true)
-        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
 
-        return PendingIntent.getActivity(this, 2, intent, PendingIntent.FLAG_UPDATE_CURRENT)
+        return PendingIntent.getActivity(this, 2, intent, openAndEraseActionIntentFlags)
     }
 
     private fun createNotificationChannelIfNeeded() {
@@ -129,11 +147,13 @@ class SessionNotificationService : Service() {
         val notificationChannelName = getString(R.string.notification_browsing_session_channel_name)
         val notificationChannelDescription = getString(
             R.string.notification_browsing_session_channel_description,
-            getString(R.string.app_name)
+            getString(R.string.app_name),
         )
 
         val channel = NotificationChannel(
-            NOTIFICATION_CHANNEL_ID, notificationChannelName, NotificationManager.IMPORTANCE_MIN
+            NOTIFICATION_CHANNEL_ID,
+            notificationChannelName,
+            NotificationManager.IMPORTANCE_MIN,
         )
         channel.importance = NotificationManager.IMPORTANCE_LOW
         channel.description = notificationChannelDescription
@@ -163,9 +183,9 @@ class SessionNotificationService : Service() {
             // before it times out. so this is a speculative fix to decrease the time between these two
             // calls by running this after potentially expensive calls in FocusApplication.onCreate and
             // BrowserFragment.inflateView by posting it to the end of the main thread.
-            ThreadUtils.postToMainThread(Runnable {
+            ThreadUtils.postToMainThread {
                 context.startService(intent)
-            })
+            }
         }
 
         internal fun stop(context: Context) {
@@ -173,9 +193,9 @@ class SessionNotificationService : Service() {
 
             // We want to make sure we always call stop after start. So we're
             // putting these actions on the same sequential run queue.
-            ThreadUtils.postToMainThread(Runnable {
+            ThreadUtils.postToMainThread {
                 context.stopService(intent)
-            })
+            }
         }
     }
 }

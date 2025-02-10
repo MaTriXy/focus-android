@@ -5,26 +5,31 @@
 
 package org.mozilla.focus.utils
 
-import android.annotation.TargetApi
-import android.app.Activity
-import android.content.ActivityNotFoundException
 import android.content.Context
-import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
-import android.provider.Settings
-import mozilla.components.browser.session.Session
+import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
+import androidx.fragment.app.FragmentActivity
+import mozilla.components.browser.state.state.SessionState
+import mozilla.components.feature.customtabs.createCustomTabConfigFromIntent
+import mozilla.components.support.utils.ext.getPackageInfoCompat
+import org.mozilla.focus.BuildConfig
+import org.mozilla.focus.R
+import org.mozilla.focus.activity.CustomTabActivity
 import org.mozilla.focus.ext.components
 import org.mozilla.focus.locale.Locales
+import org.mozilla.focus.state.AppAction
 import java.io.UnsupportedEncodingException
 import java.net.URLEncoder
 import java.util.Locale
 
 object SupportUtils {
     const val HELP_URL = "https://support.mozilla.org/kb/what-firefox-focus-android"
+    const val FOCUS_PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=${BuildConfig.APPLICATION_ID}"
+    const val RATE_APP_URL = "market://details?id=" + BuildConfig.APPLICATION_ID
     const val DEFAULT_BROWSER_URL = "https://support.mozilla.org/kb/set-firefox-focus-default-browser-android"
-    const val REPORT_SITE_ISSUE_URL = "https://webcompat.com/issues/new?url=%s&label=browser-focus-geckoview"
     const val PRIVACY_NOTICE_URL = "https://www.mozilla.org/privacy/firefox-focus/"
     const val PRIVACY_NOTICE_KLAR_URL = "https://www.mozilla.org/de/privacy/firefox-klar/"
 
@@ -37,15 +42,25 @@ object SupportUtils {
 
     enum class SumoTopic(
         /** The final path segment for a SUMO URL - see {@see #getSumoURLForTopic}  */
-        internal val topicStr: String
+        internal val topicStr: String,
     ) {
         ADD_SEARCH_ENGINE("add-search-engine"),
         AUTOCOMPLETE("autofill-domain-android"),
         TRACKERS("trackers"),
         USAGE_DATA("usage-data"),
-        WHATS_NEW("whats-new-focus-android-8"),
+        WHATS_NEW_FOCUS("whats-new-firefox-focus-android"),
+        WHATS_NEW_KLAR("whats-new-firefox-klar-android"),
         SEARCH_SUGGESTIONS("search-suggestions-focus-android"),
-        ALLOWLIST("focus-android-allowlist")
+        ALLOWLIST("focus-android-allowlist"),
+        STUDIES("how-opt-out-studies-firefox-focus-android"),
+        HTTPS_ONLY("https-only-prefs-focus"),
+        COOKIE_BANNER("auto-cookie-banner"),
+    }
+
+    fun getGenericSumoURLForTopic(topic: SumoTopic): String {
+        val escapedTopic = getEncodedTopicUTF8(topic.topicStr)
+        val langTag = Locales.getLanguageTag(Locale.getDefault())
+        return "https://support.mozilla.org/$langTag/kb/$escapedTopic"
     }
 
     fun getSumoURLForTopic(context: Context, topic: SumoTopic): String {
@@ -72,7 +87,7 @@ object SupportUtils {
 
     private fun getAppVersion(context: Context): String {
         try {
-            return context.packageManager.getPackageInfo(context.packageName, 0).versionName
+            return context.packageManager.getPackageInfoCompat(context.packageName, 0).versionName
         } catch (e: PackageManager.NameNotFoundException) {
             // This should be impossible - we should always be able to get information about ourselves:
             throw IllegalStateException("Unable find package details for Focus", e)
@@ -80,24 +95,37 @@ object SupportUtils {
     }
 
     fun openDefaultBrowserSumoPage(context: Context) {
-        val session = Session(SupportUtils.DEFAULT_BROWSER_URL, source = Session.Source.MENU)
-        context.components.sessionManager.add(session, selected = true)
+        val tabId = context.components.tabsUseCases.addTab(
+            DEFAULT_BROWSER_URL,
+            source = SessionState.Source.Internal.Menu,
+            selectTab = true,
+            private = true,
+        )
 
-        if (context is Activity) {
-            context.finish()
-        } else {
-            openDefaultBrowserSumoPage((context as ContextWrapper).baseContext)
-        }
+        context.components.appStore.dispatch(
+            AppAction.OpenTab(tabId),
+        )
     }
 
-    @TargetApi(Build.VERSION_CODES.N)
-    fun openDefaultAppsSettings(context: Context) {
-        try {
-            val intent = Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
-            context.startActivity(intent)
-        } catch (e: ActivityNotFoundException) {
-            // In some cases, a matching Activity may not exist (according to the Android docs).
-            openDefaultBrowserSumoPage(context)
-        }
+    fun openUrlInCustomTab(activity: FragmentActivity, destinationUrl: String) {
+        activity.intent.putExtra(
+            CustomTabsIntent.EXTRA_TOOLBAR_COLOR,
+            ContextCompat.getColor(activity, R.color.settings_background),
+        )
+
+        val tabId = activity.components.customTabsUseCases.add(
+            url = destinationUrl,
+            customTabConfig = createCustomTabConfigFromIntent(activity.intent, activity.resources),
+            private = true,
+            source = SessionState.Source.Internal.None,
+        )
+        val openCustomTabActivityIntent =
+            Intent(activity, CustomTabActivity::class.java).apply {
+                action = Intent.ACTION_VIEW
+                data = getSumoURLForTopic(activity, SumoTopic.ADD_SEARCH_ENGINE).toUri()
+                putExtra(CustomTabActivity.CUSTOM_TAB_ID, tabId)
+            }
+
+        activity.startActivity(openCustomTabActivityIntent)
     }
 }

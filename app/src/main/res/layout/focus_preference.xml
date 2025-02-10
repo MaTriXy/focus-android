@@ -18,6 +18,7 @@
   ~ limitations under the License
   -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:minHeight="?android:attr/listPreferredItemHeightSmall"
@@ -36,31 +37,34 @@
             android:layout_width="24dp"
             android:layout_height="24dp"
             android:layout_marginEnd="16dp"
-            android:tint="@color/colorSettingsTint"
             android:alpha="0.8"
-            android:importantForAccessibility="no"/>
+            android:importantForAccessibility="no"
+            app:tint="@color/colorSettingsTint" />
     </LinearLayout>
 
     <RelativeLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:paddingTop="16dip"
-        android:paddingBottom="16dip">
+        android:paddingTop="10dip"
+        android:paddingBottom="10dip">
 
-        <TextView android:id="@android:id/title"
+        <TextView
+            android:id="@android:id/title"
+            style="@style/Preference.Title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textAppearance="?android:attr/textAppearanceListItem" />
+            android:minHeight="24dp" />
 
-        <TextView android:id="@android:id/summary"
+        <TextView
+            android:id="@android:id/summary"
+            style="@style/Preference.Summary"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_below="@android:id/title"
             android:layout_alignStart="@android:id/title"
-            android:textAppearance="?android:attr/textAppearanceListItemSecondary"
-            android:textColor="?android:attr/textColorSecondary"
-            android:maxLines="10" />
+            android:maxLines="10"
+            android:minHeight="16dp" />
 
     </RelativeLayout>
 

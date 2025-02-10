@@ -6,13 +6,12 @@
 package org.mozilla.focus.utils
 
 import org.mozilla.focus.BuildConfig
-import org.mozilla.focus.web.Config
-import org.mozilla.focus.web.GeckoWebViewProvider
-import org.mozilla.focus.web.WebViewProvider
 
 object AppConstants {
     private const val BUILD_TYPE_RELEASE = "release"
+    private const val BUILD_TYPE_BETA = "beta"
     private const val BUILD_TYPE_DEBUG = "debug"
+    private const val BUILD_TYPE_NIGHTLY = "nightly"
     private const val PRODUCT_FLAVOR_KLAR = "klar"
 
     val isKlarBuild: Boolean
@@ -21,18 +20,15 @@ object AppConstants {
     val isReleaseBuild: Boolean
         get() = BUILD_TYPE_RELEASE == BuildConfig.BUILD_TYPE
 
-    val isGeckoBuild: Boolean
-        get() =
-            if (WebViewProvider.engine == null) {
-                Config.DEFAULT_NEW_RENDERER
-            } else {
-                WebViewProvider.engine?.javaClass?.simpleName == GeckoWebViewProvider::class.java.simpleName
-            }
+    val isBetaBuild: Boolean
+        get() = BUILD_TYPE_BETA == BuildConfig.BUILD_TYPE
+
+    val isNightlyBuild: Boolean
+        get() = BUILD_TYPE_NIGHTLY == BuildConfig.BUILD_TYPE
 
     val isDevBuild: Boolean
         get() = BUILD_TYPE_DEBUG == BuildConfig.BUILD_TYPE
 
-    fun supportsDownloadingFiles(): Boolean {
-        return true
-    }
+    val isDevOrNightlyBuild: Boolean
+        get() = isDevBuild || isNightlyBuild
 }

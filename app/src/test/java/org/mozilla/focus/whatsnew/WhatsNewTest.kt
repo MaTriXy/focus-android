@@ -4,14 +4,14 @@
 
 package org.mozilla.focus.whatsnew
 
-import android.preference.PreferenceManager
+import androidx.preference.PreferenceManager
+import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.RuntimeEnvironment
 
 @RunWith(RobolectricTestRunner::class)
 class WhatsNewTest {
@@ -19,10 +19,10 @@ class WhatsNewTest {
     fun setUp() {
         // Reset all saved and cached values before running a test
 
-        PreferenceManager.getDefaultSharedPreferences(RuntimeEnvironment.application)
-                .edit()
-                .clear()
-                .apply()
+        PreferenceManager.getDefaultSharedPreferences(ApplicationProvider.getApplicationContext())
+            .edit()
+            .clear()
+            .apply()
 
         WhatsNew.wasUpdatedRecently = null
     }
@@ -32,12 +32,12 @@ class WhatsNewTest {
      */
     @Test
     fun testDefault() {
-        assertFalse(WhatsNew.shouldHighlightWhatsNew(RuntimeEnvironment.application))
+        assertFalse(WhatsNew.shouldHighlightWhatsNew(ApplicationProvider.getApplicationContext()))
     }
 
     @Test
     fun testWithUpdatedAppVersionName() {
-        assertFalse(WhatsNew.shouldHighlightWhatsNew(RuntimeEnvironment.application))
+        assertFalse(WhatsNew.shouldHighlightWhatsNew(ApplicationProvider.getApplicationContext()))
 
         val storage = object : WhatsNewStorage {
             private var version = WhatsNewVersion("2.0.0")
@@ -75,45 +75,45 @@ class WhatsNewTest {
 
     @Test
     fun testOverMultipleSessions() {
-        assertFalse(WhatsNew.shouldHighlightWhatsNew(RuntimeEnvironment.application))
+        assertFalse(WhatsNew.shouldHighlightWhatsNew(ApplicationProvider.getApplicationContext()))
 
-        PreferenceManager.getDefaultSharedPreferences(RuntimeEnvironment.application)
-                .edit()
-                .putString(WhatsNewStorage.PREFERENCE_KEY_APP_NAME, "2.0")
-                .apply()
+        PreferenceManager.getDefaultSharedPreferences(ApplicationProvider.getApplicationContext())
+            .edit()
+            .putString(WhatsNewStorage.PREFERENCE_KEY_APP_NAME, "0.0")
+            .apply()
 
         for (i in 1..3) {
             // Reset cached value
             WhatsNew.wasUpdatedRecently = null
-            assertTrue(WhatsNew.shouldHighlightWhatsNew(RuntimeEnvironment.application))
+            assertTrue(WhatsNew.shouldHighlightWhatsNew(ApplicationProvider.getApplicationContext()))
         }
 
         // After three sessions the method will return false again
         WhatsNew.wasUpdatedRecently = null
-        assertFalse(WhatsNew.shouldHighlightWhatsNew(RuntimeEnvironment.application))
+        assertFalse(WhatsNew.shouldHighlightWhatsNew(ApplicationProvider.getApplicationContext()))
     }
 
     @Test
     fun testResettingManually() {
-        assertFalse(WhatsNew.shouldHighlightWhatsNew(RuntimeEnvironment.application))
+        assertFalse(WhatsNew.shouldHighlightWhatsNew(ApplicationProvider.getApplicationContext()))
 
-        PreferenceManager.getDefaultSharedPreferences(RuntimeEnvironment.application)
-                .edit()
-                .putString(WhatsNewStorage.PREFERENCE_KEY_APP_NAME, "2.0")
-                .apply()
+        PreferenceManager.getDefaultSharedPreferences(ApplicationProvider.getApplicationContext())
+            .edit()
+            .putString(WhatsNewStorage.PREFERENCE_KEY_APP_NAME, "0.0")
+            .apply()
 
         // Reset cached value
         WhatsNew.wasUpdatedRecently = null
 
-        assertTrue(WhatsNew.shouldHighlightWhatsNew(RuntimeEnvironment.application))
+        assertTrue(WhatsNew.shouldHighlightWhatsNew(ApplicationProvider.getApplicationContext()))
 
         // Now we reset the state manually
-        WhatsNew.userViewedWhatsNew(RuntimeEnvironment.application)
+        WhatsNew.userViewedWhatsNew(ApplicationProvider.getApplicationContext())
 
-        assertFalse(WhatsNew.shouldHighlightWhatsNew(RuntimeEnvironment.application))
+        assertFalse(WhatsNew.shouldHighlightWhatsNew(ApplicationProvider.getApplicationContext()))
 
         // And also the next time we will return false
         WhatsNew.wasUpdatedRecently = null
-        assertFalse(WhatsNew.shouldHighlightWhatsNew(RuntimeEnvironment.application))
+        assertFalse(WhatsNew.shouldHighlightWhatsNew(ApplicationProvider.getApplicationContext()))
     }
 }

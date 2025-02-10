@@ -6,8 +6,8 @@ package org.mozilla.focus.whatsnew
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.preference.PreferenceManager
 import androidx.annotation.VisibleForTesting
+import androidx.preference.PreferenceManager
 
 /**
  * Interface to abstract where the cached version and session counter is stored
@@ -29,7 +29,7 @@ interface WhatsNewStorage {
 
 class SharedPreferenceWhatsNewStorage(private val sharedPreference: SharedPreferences) : WhatsNewStorage {
 
-    constructor(context: Context): this(PreferenceManager.getDefaultSharedPreferences(context))
+    constructor(context: Context) : this(PreferenceManager.getDefaultSharedPreferences(context))
 
     override fun getVersion(): WhatsNewVersion? {
         return sharedPreference.getString(WhatsNewStorage.PREFERENCE_KEY_APP_NAME, null)?.let { WhatsNewVersion(it) }
@@ -37,8 +37,8 @@ class SharedPreferenceWhatsNewStorage(private val sharedPreference: SharedPrefer
 
     override fun setVersion(version: WhatsNewVersion) {
         sharedPreference.edit()
-                .putString(WhatsNewStorage.PREFERENCE_KEY_APP_NAME, version.version)
-                .apply()
+            .putString(WhatsNewStorage.PREFERENCE_KEY_APP_NAME, version.version)
+            .apply()
     }
 
     override fun getSessionCounter(): Int {
@@ -47,7 +47,7 @@ class SharedPreferenceWhatsNewStorage(private val sharedPreference: SharedPrefer
 
     override fun setSessionCounter(sessionCount: Int) {
         sharedPreference.edit()
-                .putInt(WhatsNewStorage.PREFERENCE_KEY_SESSION_COUNTER, sessionCount)
-                .apply()
+            .putInt(WhatsNewStorage.PREFERENCE_KEY_SESSION_COUNTER, sessionCount)
+            .apply()
     }
 }

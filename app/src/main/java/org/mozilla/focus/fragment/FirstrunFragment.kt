@@ -5,96 +5,78 @@
 package org.mozilla.focus.fragment
 
 import android.content.Context
-import android.graphics.drawable.TransitionDrawable
 import android.os.Bundle
-import android.preference.PreferenceManager
-import com.google.android.material.tabs.TabLayout
-import androidx.fragment.app.Fragment
-import androidx.viewpager.widget.ViewPager
 import android.transition.TransitionInflater
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import mozilla.components.browser.session.Session
+import androidx.fragment.app.Fragment
+import androidx.viewpager.widget.ViewPager
+import org.mozilla.focus.GleanMetrics.Onboarding
 import org.mozilla.focus.R
-import org.mozilla.focus.ext.components
+import org.mozilla.focus.databinding.FragmentFirstrunBinding
+import org.mozilla.focus.ext.requireComponents
+import org.mozilla.focus.ext.settings
 import org.mozilla.focus.firstrun.FirstrunPagerAdapter
+import org.mozilla.focus.state.AppAction
 import org.mozilla.focus.telemetry.TelemetryWrapper
 import org.mozilla.focus.utils.StatusBarUtils
+import kotlin.math.abs
 
 class FirstrunFragment : Fragment(), View.OnClickListener {
 
-    private var viewPager: ViewPager? = null
+    private var _binding: FragmentFirstrunBinding? = null
+    private val binding get() = _binding!!
 
-    private var background: View? = null
-
-    override fun onAttach(context: Context?) {
+    override fun onAttach(context: Context) {
         super.onAttach(context)
 
-        val transition = TransitionInflater.from(context).inflateTransition(R.transition.firstrun_exit)
+        val transition =
+            TransitionInflater.from(context).inflateTransition(R.transition.firstrun_exit)
 
         exitTransition = transition
 
         // We will send a telemetry event whenever a new firstrun page is shown. However this page
         // listener won't fire for the initial page we are showing. So we are going to firing here.
+        Onboarding.pageDisplayed.record(Onboarding.PageDisplayedExtra(0))
         TelemetryWrapper.showFirstRunPageEvent(0)
     }
 
-    @Suppress("MagicNumber")
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-        val view = inflater.inflate(R.layout.fragment_firstrun, container, false)
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View {
+        _binding = FragmentFirstrunBinding.inflate(inflater, container, false)
 
-        view.findViewById<View>(R.id.skip).setOnClickListener(this)
+        setupPager()
 
-        background = view.findViewById(R.id.background)
+        binding.tabs.setupWithViewPager(binding.pager, true)
 
-        val adapter = FirstrunPagerAdapter(container!!.context, this)
+        binding.skip.setOnClickListener(this)
 
-        viewPager = view.findViewById(R.id.pager)
-        viewPager!!.contentDescription = adapter.getPageAccessibilityDescription(0)
-        viewPager!!.isFocusable = true
-
-        viewPager!!.setPageTransformer(true) { page, position -> page.alpha = 1 - 0.5f * Math.abs(position) }
-
-        viewPager!!.clipToPadding = false
-        viewPager!!.adapter = adapter
-        viewPager!!.addOnPageChangeListener(object : ViewPager.OnPageChangeListener {
-            override fun onPageSelected(position: Int) {
-                TelemetryWrapper.showFirstRunPageEvent(position)
-
-                val drawable = background!!.background as TransitionDrawable
-
-                if (position == adapter.count - 1) {
-                    drawable.startTransition(200)
-                } else {
-                    drawable.resetTransition()
-                }
-
-                viewPager!!.contentDescription = adapter.getPageAccessibilityDescription(position)
-            }
-
-            override fun onPageScrolled(position: Int, positionOffset: Float, positionOffsetPixels: Int) {}
-
-            override fun onPageScrollStateChanged(state: Int) {}
-        })
-
-        val tabLayout = view.findViewById<TabLayout>(R.id.tabs)
-        tabLayout.setupWithViewPager(viewPager, true)
-
-        return view
+        return binding.root
     }
 
     override fun onClick(view: View) {
+        val currentItem = binding.pager.currentItem
         when (view.id) {
-            R.id.next -> viewPager!!.currentItem = viewPager!!.currentItem + 1
+            R.id.next -> {
+                binding.pager.currentItem = binding.pager.currentItem + 1
+                Onboarding.nextButtonTapped.record(Onboarding.NextButtonTappedExtra(currentItem))
+            }
 
             R.id.skip -> {
                 finishFirstrun()
+                Onboarding.skipButtonTapped.record(Onboarding.SkipButtonTappedExtra(currentItem))
+
                 TelemetryWrapper.skipFirstRunEvent()
             }
 
             R.id.finish -> {
                 finishFirstrun()
+                Onboarding.finishButtonTapped.record(Onboarding.FinishButtonTappedExtra(currentItem))
+
                 TelemetryWrapper.finishFirstRunEvent()
             }
 
@@ -102,57 +84,69 @@ class FirstrunFragment : Fragment(), View.OnClickListener {
         }
     }
 
-    private fun finishFirstrun() {
-        val fragmentManager = requireActivity().supportFragmentManager
+    @Suppress("MagicNumber")
+    private fun setupPager() {
+        val firstRunPagerAdapter = FirstrunPagerAdapter(requireContext(), this)
+        binding.pager.apply {
+            contentDescription = firstRunPagerAdapter.getPageAccessibilityDescription(0)
+            isFocusable = true
 
-        PreferenceManager.getDefaultSharedPreferences(requireContext())
-            .edit()
-            .putBoolean(FIRSTRUN_PREF, true)
-            .apply()
+            setPageTransformer(true) { page, position ->
+                page.alpha = 1 - 0.5f * abs(position)
+            }
 
-        val sessionUUID = arguments!!.getString(ARGUMENT_SESSION_UUID)
-        val sessionManager = requireContext().components.sessionManager
+            clipToPadding = false
+            adapter = firstRunPagerAdapter
+            addOnPageChangeListener(
+                object : ViewPager.OnPageChangeListener {
+                    override fun onPageSelected(position: Int) {
+                        Onboarding.pageDisplayed.record(Onboarding.PageDisplayedExtra(0))
+                        TelemetryWrapper.showFirstRunPageEvent(position)
 
-        val fragment: Fragment
-        fragment = if (sessionUUID == null) {
-            UrlInputFragment.createWithoutSession()
-        } else {
-            val session = sessionManager.findSessionById(sessionUUID)
-            BrowserFragment.createForSession(session!!)
-        }
+                        contentDescription =
+                            firstRunPagerAdapter.getPageAccessibilityDescription(position)
+                    }
 
-        val fragmentTag =
-            if (fragment is BrowserFragment) BrowserFragment.FRAGMENT_TAG else UrlInputFragment.FRAGMENT_TAG
+                    override fun onPageScrolled(
+                        position: Int,
+                        positionOffset: Float,
+                        positionOffsetPixels: Int,
+                    ) {}
 
-        fragmentManager
-            .beginTransaction()
-            .replace(R.id.container, fragment, fragmentTag)
-            .commit()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        StatusBarUtils.getStatusBarHeight(background) { statusBarHeight ->
-            background!!.setPadding(
-                0,
-                statusBarHeight,
-                0,
-                0
+                    override fun onPageScrollStateChanged(state: Int) {}
+                },
             )
         }
     }
 
+    private fun finishFirstrun() {
+        requireContext().settings.isFirstRun = false
+        val selectedTabId = requireComponents.store.state.selectedTabId
+        requireComponents.appStore.dispatch(AppAction.FinishFirstRun(selectedTabId))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        StatusBarUtils.getStatusBarHeight(binding.background) { statusBarHeight ->
+            binding.background.setPadding(
+                0,
+                statusBarHeight,
+                0,
+                0,
+            )
+        }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
+
     companion object {
         const val FRAGMENT_TAG = "firstrun"
-        const val FIRSTRUN_PREF = "firstrun_shown"
 
-        private const val ARGUMENT_SESSION_UUID = "sessionUUID"
-
-        fun create(currentSession: Session?): FirstrunFragment {
-            val uuid = currentSession?.id
-
+        fun create(): FirstrunFragment {
             val arguments = Bundle()
-            arguments.putString(ARGUMENT_SESSION_UUID, uuid)
 
             val fragment = FirstrunFragment()
             fragment.arguments = arguments

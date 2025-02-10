@@ -1,21 +1,16 @@
 # Firefox Focus for Android
 
-[![Build Status](https://travis-ci.org/mozilla-mobile/focus-android.svg?branch=master)](https://travis-ci.org/mozilla-mobile/focus-android)
-[![Task Status](https://github.taskcluster.net/v1/repository/mozilla-mobile/focus-android/master/badge.svg)](https://github.taskcluster.net/v1/repository/mozilla-mobile/focus-android/master/latest)
-[![codecov](https://codecov.io/gh/mozilla-mobile/focus-android/branch/master/graph/badge.svg)](https://codecov.io/gh/mozilla-mobile/focus-android/branch/master)
-
-
 _Browse like no one’s watching. The new Firefox Focus automatically blocks a wide range of online trackers — from the moment you launch it to the second you leave it. Easily erase your history, passwords and cookies, so you won’t get followed by things like unwanted ads._ 
 
 Firefox Focus provides automatic ad blocking and tracking protection on an easy-to-use private browser.
 
 <a href="https://play.google.com/store/apps/details?id=org.mozilla.focus" target="_blank"><img src="https://play.google.com/intl/en_us/badges/images/generic/en-play-badge.png" alt="Get it on Google Play" height="90"/></a>
-<a href="https://f-droid.org/en/packages/org.mozilla.klar/" target="_blank">
-<img src="https://f-droid.org/badge/get-it-on.png" alt="Get it on F-Droid" height="90"/></a>
 
 * [Google Play: Firefox Focus (Global)](https://play.google.com/store/apps/details?id=org.mozilla.focus)
 * [Google Play: Firefox Klar (Germany, Austria & Switzerland)](https://play.google.com/store/apps/details?id=org.mozilla.klar)
 * [Download APKs](https://github.com/mozilla-mobile/focus-android/releases)
+
+
 
 ## Getting Involved
 
@@ -24,12 +19,9 @@ We encourage you to participate in this open source project. We love Pull Reques
 
 Before you attempt to make a contribution please read the [Community Participation Guidelines](https://www.mozilla.org/en-US/about/governance/policies/participation/).
 
-* [Guide to Contributing](https://github.com/mozilla-mobile/shared-docs/blob/master/android/CONTRIBUTING.md) (**New contributors start here!**)
+* [Guide to Contributing](https://github.com/mozilla-mobile/shared-docs/blob/main/android/CONTRIBUTING.md) (**New contributors start here!**)
 
 * [View current Issues](https://github.com/mozilla-mobile/focus-android/issues), [view current Pull Requests](https://github.com/mozilla-mobile/focus-android/pulls), or [file a security issue][sec issue].
-
-* IRC: [#focus (irc.mozilla.org)](https://wiki.mozilla.org/IRC) | [view logs](https://mozilla.logbot.info/focus/)
-(**We're available Monday-Friday, GMT and PST working hours**).
 
 * Opt-in to our Mailing List [firefox-focus-public@](https://mail.mozilla.org/listinfo/firefox-focus-public) to keep up to date.
 
@@ -49,13 +41,49 @@ Before you attempt to make a contribution please read the [Community Participati
 2. Import the project into Android Studio **or** build on the command line:
 
   ```shell
-  ./gradlew clean app:assembleFocusArmDebug
+  ./gradlew clean app:assembleFocusDebug
   ```
 
 3. Make sure to select the correct build variant in Android Studio:
 **focusArmDebug** for ARM
 **focusX86Debug** for X86
 **focusAarch64Debug** for ARM64
+
+## local.properties helpers
+You can speed up or enhance local development by setting a few helper flags available in `local.properties` which will be made easily available as gradle properties.
+
+### Automatically sign release builds
+To sign your release builds with your debug key automatically, add the following to `<proj-root>/local.properties`:
+
+```sh
+autosignReleaseWithDebugKey
+```
+
+With this line, release build variants will automatically be signed with your debug key (like debug builds), allowing them to be built and installed directly through Android Studio or the command line.
+
+This is helpful when you're building release variants frequently, for example to test feature flags and or do performance analyses.
+
+### Building debuggable release variants
+
+Nightly, Beta and Release variants are getting published to Google Play and therefore are not debuggable. To locally create debuggable builds of those variants, add the following to `<proj-root>/local.properties`:
+
+```sh
+debuggable
+```
+
+### Auto-publication workflow for android-components and application-services
+If you're making changes to these projects and want to test them in Focus, auto-publication workflow is the fastest, most reliable
+way to do that.
+
+In `local.properties`, specify a relative path to your local `android-components` and/or `application-services` projects. E.g.:
+- `autoPublish.android-components.dir=../firefox-android/android-components`
+- `autoPublish.application-services.dir=../application-services`
+
+*Note that the Android Components project was already migrated to the new [firefox-android](https://github.com/mozilla-mobile/firefox-android) repository. Therefore, this auto publication workflow won't be neccessary for Android Components once Focus is integrated in the new repository as well.*
+
+Once these flags are set, your Focus builds will include any local modifications present in these projects.
+
+See a [demo of auto-publication workflow in action](https://www.youtube.com/watch?v=qZKlBzVvQGc).
 
 ## Pre-push hooks
 To reduce review turn-around time, we'd like all pushes to run tests locally. We'd
@@ -72,6 +100,16 @@ To push without running the pre-push hook (e.g. doc updates):
 ```sh
 git push <remote> --no-verify
 ```
+
+## Test Channel on Google PlayStore
+To get Focus Nightly on your device, follow these steps:
+
+1) Visit https://groups.google.com/g/firefox-focus-pre-release and join the Google Group
+2) After you have joined the group opt-in to receive Nightly builds, again with the same Google account: https://play.google.com/apps/testing/org.mozilla.focus.nightly
+3) Download Firefox Focus (Nightly) from Google Play: https://play.google.com/store/apps/details?id=org.mozilla.focus.nightly
+
+Make sure you use the same Google Account for both steps.
+
 
 ## License
 

@@ -14,14 +14,14 @@ import java.io.IOException
 
 class MobileMetricsPingStorage(
     private val context: Context,
-    private val file: File = File("${context.cacheDir}/$STORAGE_FOLDER/$FILE_NAME")
+    private val file: File = File("${context.cacheDir}/$STORAGE_FOLDER/$FILE_NAME"),
 ) {
     private val atomicFile = AtomicFile(file)
 
     fun shouldStoreMetrics(): Boolean = !file.exists()
     fun clearStorage() { file.delete() }
 
-    suspend fun save(json: JSONObject) {
+    fun save(json: JSONObject) {
         val stream = atomicFile.startWrite()
         try {
             stream.writer().use {
@@ -34,7 +34,7 @@ class MobileMetricsPingStorage(
         }
     }
 
-    suspend fun load(): JSONObject? {
+    fun load(): JSONObject? {
         return try {
             JSONObject(String(atomicFile.readFully()))
         } catch (e: FileNotFoundException) {

@@ -1,5 +1,4 @@
-/* -*- Mode: Java; c-basic-offset: 4; tab-width: 4; indent-tabs-mode: nil; -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -9,16 +8,12 @@ import android.app.Activity
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import androidx.annotation.StringRes
-import com.google.android.material.snackbar.Snackbar
-import androidx.core.content.ContextCompat
-import androidx.core.view.ViewCompat
-import android.view.Gravity
 import android.view.MenuItem
 import android.view.View
 import android.view.inputmethod.InputMethodManager
-import android.widget.TextView
-import org.mozilla.focus.R
+import androidx.annotation.StringRes
+import com.google.android.material.snackbar.Snackbar
+import org.mozilla.focus.ext.tryAsActivity
 import java.lang.ref.WeakReference
 
 object ViewUtils {
@@ -27,17 +22,10 @@ object ViewUtils {
     private const val MENU_ITEM_ALPHA_DISABLED = 130
 
     /**
-     * Flag of imeOptions: used to request that the IME does not update any personalized data such
-     * as typing history and personalized language model based on what the user typed on this text
-     * editing object.
-     */
-    const val IME_FLAG_NO_PERSONALIZED_LEARNING = 0x01000000
-
-    /**
      * Runnable to show the keyboard for a specific view.
      */
     @Suppress("ReturnCount")
-    private class ShowKeyboard internal constructor(view: View?) : Runnable {
+    private class ShowKeyboard(view: View?) : Runnable {
         companion object {
             private const val INTERVAL_MS = 100
             private const val MAX_TRIES = 10
@@ -49,8 +37,8 @@ object ViewUtils {
 
         override fun run() {
             val myView = viewReference.get() ?: return
-            val activity: Activity? = myView.context?.asActivity() ?: return
-            val imm = activity?.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager ?: return
+            val activity: Activity = myView.context?.tryAsActivity() ?: return
+            val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager ?: return
 
             when {
                 tries <= 0 -> return
@@ -70,7 +58,7 @@ object ViewUtils {
             }
         }
 
-        internal fun post() {
+        fun post() {
             tries--
             handler.postDelayed(this, INTERVAL_MS.toLong())
         }
@@ -88,36 +76,14 @@ object ViewUtils {
     }
 
     /**
-     * Create a snackbar with Focus branding (See #193).
+     * Create a custom FocusSnackbar.
      */
     fun showBrandedSnackbar(view: View?, @StringRes resId: Int, delayMillis: Int) {
         val context = view!!.context
-        val snackbar = Snackbar.make(view, resId, Snackbar.LENGTH_LONG)
-
-        val snackbarView = snackbar.view
-        snackbarView.setBackgroundColor(ContextCompat.getColor(context, R.color.snackbarBackground))
-
-        val snackbarTextView = snackbarView.findViewById<View>(R.id.snackbar_text) as TextView
-        snackbarTextView.setTextColor(ContextCompat.getColor(context, R.color.snackbarTextColor))
-        snackbarTextView.gravity = Gravity.CENTER
-        snackbarTextView.textAlignment = View.TEXT_ALIGNMENT_CENTER
+        val snackbar = FocusSnackbar.make(view, Snackbar.LENGTH_LONG)
+        snackbar.setText(context.getString(resId))
 
         view.postDelayed({ snackbar.show() }, delayMillis.toLong())
-    }
-
-    fun getBrandedSnackbar(view: View, @StringRes resId: Int): Snackbar {
-        val context = view.context
-        val snackbar = Snackbar.make(view, resId, Snackbar.LENGTH_LONG)
-        val snackbarView = snackbar.view
-        snackbarView.setBackgroundColor(ContextCompat.getColor(context, R.color.snackbarBackground))
-        val snackbarTextView = snackbarView.findViewById<TextView>(R.id.snackbar_text)
-        snackbarTextView.setTextColor(ContextCompat.getColor(context, R.color.snackbarTextColor))
-        snackbar.setActionTextColor(ContextCompat.getColor(context, R.color.snackbarActionText))
-        return snackbar
-    }
-
-    fun isRTL(view: View): Boolean {
-        return ViewCompat.getLayoutDirection(view) == ViewCompat.LAYOUT_DIRECTION_RTL
     }
 
     /**

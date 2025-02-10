@@ -5,15 +5,14 @@
 
 package org.mozilla.focus.utils;
 
-import android.content.Context;
 import android.net.Uri;
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import android.text.TextUtils;
 import android.webkit.URLUtil;
-import mozilla.components.browser.search.SearchEngine;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
 import org.mozilla.focus.browser.LocalizedContent;
-import org.mozilla.focus.ext.ContextKt;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -57,15 +56,6 @@ public class UrlUtils {
     public static boolean isHttpOrHttps(String url) {
         return !TextUtils.isEmpty(url) && (url.startsWith("http:") || url.startsWith("https:"));
 
-    }
-
-    public static String createSearchUrl(Context context, String searchTerm) {
-        final String defaultIdentifier = Settings.getInstance(context).getDefaultSearchEngineName();
-
-        final SearchEngine searchEngine = ContextKt.getComponents(context).getSearchEngineManager()
-                .getDefaultSearchEngine(context, defaultIdentifier);
-
-        return searchEngine.buildSearchUrl(searchTerm);
     }
 
     public static String stripUserInfo(@Nullable String url) {
@@ -157,26 +147,6 @@ public class UrlUtils {
         }
 
         return host.substring(start);
-    }
-
-    public static String stripScheme(@Nullable String url) {
-        if (url == null) {
-            return null;
-        }
-
-        int start = 0;
-
-        if (url.startsWith("http://")) {
-            start = 7;
-        } else if (url.startsWith("https://")) {
-            start = 8;
-        }
-
-        return url.substring(start);
-    }
-
-    public static String stripSchemeAndSubDomain(String url) {
-        return normalize(stripCommonSubdomains(stripScheme(url)));
     }
 
     public static boolean isLocalizedContent(@Nullable String url) {

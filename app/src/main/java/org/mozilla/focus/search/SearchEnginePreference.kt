@@ -7,11 +7,11 @@ package org.mozilla.focus.search
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.preference.Preference
 import android.util.AttributeSet
+import androidx.preference.Preference
+import mozilla.components.browser.state.state.selectedOrDefaultSearchEngine
 import org.mozilla.focus.R
 import org.mozilla.focus.ext.components
-import org.mozilla.focus.utils.Settings
 
 /**
  * Preference for setting the default search engine.
@@ -29,12 +29,12 @@ class SearchEnginePreference : Preference, SharedPreferences.OnSharedPreferenceC
 
     override fun onAttached() {
         summary = defaultSearchEngineName
-        preferenceManager.sharedPreferences.registerOnSharedPreferenceChangeListener(this)
+        preferenceManager.sharedPreferences?.registerOnSharedPreferenceChangeListener(this)
         super.onAttached()
     }
 
     override fun onPrepareForRemoval() {
-        preferenceManager.sharedPreferences.unregisterOnSharedPreferenceChangeListener(this)
+        preferenceManager.sharedPreferences?.unregisterOnSharedPreferenceChangeListener(this)
         super.onPrepareForRemoval()
     }
 
@@ -45,7 +45,5 @@ class SearchEnginePreference : Preference, SharedPreferences.OnSharedPreferenceC
     }
 
     private val defaultSearchEngineName: String
-        get() = context.components.searchEngineManager.getDefaultSearchEngine(
-                getContext(),
-                Settings.getInstance(context).defaultSearchEngineName).name
+        get() = context.components.store.state.search.selectedOrDefaultSearchEngine?.name ?: ""
 }

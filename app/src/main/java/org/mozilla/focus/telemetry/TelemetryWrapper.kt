@@ -9,25 +9,22 @@
 package org.mozilla.focus.telemetry
 
 import android.content.Context
-import android.net.http.SslError
 import android.os.Build
 import android.os.StrictMode
-import android.preference.PreferenceManager
 import androidx.annotation.CheckResult
 import androidx.annotation.VisibleForTesting
+import androidx.preference.PreferenceManager
 import kotlinx.coroutines.runBlocking
-import mozilla.components.lib.fetch.httpurlconnection.HttpURLConnectionClient
-import mozilla.components.ui.autocomplete.InlineAutocompleteEditText
+import mozilla.components.browser.state.search.SearchEngine
+import mozilla.components.browser.state.selector.privateTabs
+import mozilla.components.browser.state.state.selectedOrDefaultSearchEngine
 import org.json.JSONObject
 import org.mozilla.focus.BuildConfig
 import org.mozilla.focus.R
 import org.mozilla.focus.ext.components
-import org.mozilla.focus.search.CustomSearchEngineStore
 import org.mozilla.focus.utils.AppConstants
 import org.mozilla.focus.utils.MobileMetricsPingStorage
-import org.mozilla.focus.utils.Settings
 import org.mozilla.focus.utils.UrlUtils
-import org.mozilla.focus.utils.activeExperimentNames
 import org.mozilla.telemetry.Telemetry
 import org.mozilla.telemetry.TelemetryHolder
 import org.mozilla.telemetry.config.TelemetryConfiguration
@@ -46,12 +43,11 @@ import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.collections.HashSet
 
 @Suppress(
-        // Yes, this a large class with a lot of functions. But it's very simple and still easy to read.
-        "TooManyFunctions",
-        "LargeClass"
+    // Yes, this a large class with a lot of functions. But it's very simple and still easy to read.
+    "TooManyFunctions",
+    "LargeClass",
 )
 object TelemetryWrapper {
     private const val TELEMETRY_APP_NAME_FOCUS = "Focus"
@@ -59,8 +55,6 @@ object TelemetryWrapper {
     private const val LAST_MOBILE_METRICS_PINGS = "LAST_MOBILE_METRICS_PINGS"
 
     private val dateFormat = SimpleDateFormat("yyyyMMdd", Locale.US)
-
-    private const val MAXIMUM_CUSTOM_TAB_EXTRAS = 10
 
     private const val HISTOGRAM_SIZE = 200
     private const val BUCKET_SIZE_MS = 100
@@ -70,142 +64,109 @@ object TelemetryWrapper {
         get() = !AppConstants.isKlarBuild
 
     private object Category {
-        val ACTION = "action"
-        val ERROR = "error"
-        val HISTOGRAM = "histogram"
+        const val ACTION = "action"
+        const val HISTOGRAM = "histogram"
     }
 
     private object Method {
-        val TYPE_URL = "type_url"
-        val TYPE_QUERY = "type_query"
-        val TYPE_SELECT_QUERY = "select_query"
-        val CLICK = "click"
-        val SWIPE = "swipe"
-        val CANCEL = "cancel"
-        val LONG_PRESS = "long_press"
-        val CHANGE = "change"
-        val FOREGROUND = "foreground"
-        val BACKGROUND = "background"
-        val SHARE = "share"
-        val SAVE = "save"
-        val COPY = "copy"
-        val OPEN = "open"
-        val INSTALL = "install"
-        val INTENT_URL = "intent_url"
-        val INTENT_CUSTOM_TAB = "intent_custom_tab"
-        val TEXT_SELECTION_INTENT = "text_selection_intent"
-        val SHOW = "show"
-        val HIDE = "hide"
-        val SHARE_INTENT = "share_intent"
-        val REMOVE = "remove"
-        val REMOVE_ALL = "remove_all"
-        val REORDER = "reorder"
-        val RESTORE = "restore"
-        val PAGE = "page"
-        val RESOURCE = "resource"
+        const val TYPE_URL = "type_url"
+        const val TYPE_QUERY = "type_query"
+        const val TYPE_SELECT_QUERY = "select_query"
+        const val CLICK = "click"
+        const val CHANGE = "change"
+        const val FOREGROUND = "foreground"
+        const val BACKGROUND = "background"
+        const val SHARE = "share"
+        const val SAVE = "save"
+        const val COPY = "copy"
+        const val OPEN = "open"
+        const val INSTALL = "install"
+        const val INTENT_URL = "intent_url"
+        const val TEXT_SELECTION_INTENT = "text_selection_intent"
+        const val SHOW = "show"
+        const val HIDE = "hide"
+        const val SHARE_INTENT = "share_intent"
+        const val REMOVE = "remove"
+        const val REMOVE_ALL = "remove_all"
+        const val REORDER = "reorder"
+        const val RESTORE = "restore"
     }
 
     private object Object {
-        val SEARCH_BAR = "search_bar"
-        val ERASE_BUTTON = "erase_button"
-        val SETTING = "setting"
-        val APP = "app"
-        val MENU = "menu"
-        val BACK_BUTTON = "back_button"
-        val NOTIFICATION = "notification"
-        val NOTIFICATION_ACTION = "notification_action"
-        val SHORTCUT = "shortcut"
-        val BLOCKING_SWITCH = "blocking_switch"
-        val DESKTOP_REQUEST_CHECK = "desktop_request_check"
-        val BROWSER = "browser"
-        val BROWSER_CONTEXTMENU = "browser_contextmenu"
-        val CUSTOM_TAB_CLOSE_BUTTON = "custom_tab_close_but"
-        val CUSTOM_TAB_ACTION_BUTTON = "custom_tab_action_bu"
-        val FIRSTRUN = "firstrun"
-        val DOWNLOAD_DIALOG = "download_dialog"
-        val ADD_TO_HOMESCREEN_DIALOG = "add_to_homescreen_dialog"
-        val HOMESCREEN_SHORTCUT = "homescreen_shortcut"
-        val TABS_TRAY = "tabs_tray"
-        val RECENT_APPS = "recent_apps"
-        val APP_ICON = "app_icon"
-        val AUTOCOMPLETE_DOMAIN = "autocomplete_domain"
-        val AUTOFILL = "autofill"
-        val SEARCH_ENGINE_SETTING = "search_engine_setting"
-        val ADD_SEARCH_ENGINE_LEARN_MORE = "search_engine_learn_more"
-        val CUSTOM_SEARCH_ENGINE = "custom_search_engine"
-        val REMOVE_SEARCH_ENGINES = "remove_search_engines"
-        val GECKO_ENGINE = "gecko_engine"
-        val TIP = "tip"
-        val SEARCH_SUGGESTION_PROMPT = "search_suggestion_prompt"
-        val MAKE_DEFAULT_BROWSER_OPEN_WITH = "make_default_browser_open_with"
-        val MAKE_DEFAULT_BROWSER_SETTINGS = "make_default_browser_settings"
-        val ALLOWLIST = "allowlist"
-        val CRASH_REPORTER = "crash_reporter"
+        const val SEARCH_BAR = "search_bar"
+        const val ERASE_BUTTON = "erase_button"
+        const val SETTING = "setting"
+        const val APP = "app"
+        const val MENU = "menu"
+        const val BACK_BUTTON = "back_button"
+        const val NOTIFICATION = "notification"
+        const val NOTIFICATION_ACTION = "notification_action"
+        const val SHORTCUT = "shortcut"
+        const val DESKTOP_REQUEST_CHECK = "desktop_request_check"
+        const val BROWSER = "browser"
+        const val BROWSER_CONTEXTMENU = "browser_contextmenu"
+        const val CUSTOM_TAB_CLOSE_BUTTON = "custom_tab_close_but"
+        const val CUSTOM_TAB_ACTION_BUTTON = "custom_tab_action_bu"
+        const val FIRSTRUN = "firstrun"
+        const val DOWNLOAD_DIALOG = "download_dialog"
+        const val ADD_TO_HOMESCREEN_DIALOG = "add_to_homescreen_dialog"
+        const val HOMESCREEN_SHORTCUT = "homescreen_shortcut"
+        const val TABS_TRAY = "tabs_tray"
+        const val RECENT_APPS = "recent_apps"
+        const val APP_ICON = "app_icon"
+        const val AUTOCOMPLETE_DOMAIN = "autocomplete_domain"
+        const val SEARCH_ENGINE_SETTING = "search_engine_setting"
+        const val ADD_SEARCH_ENGINE_LEARN_MORE = "search_engine_learn_more"
+        const val CUSTOM_SEARCH_ENGINE = "custom_search_engine"
+        const val REMOVE_SEARCH_ENGINES = "remove_search_engines"
+        const val SEARCH_SUGGESTION_PROMPT = "search_suggestion_prompt"
+        const val MAKE_DEFAULT_BROWSER_OPEN_WITH = "make_default_browser_open_with"
+        const val MAKE_DEFAULT_BROWSER_SETTINGS = "make_default_browser_settings"
+        const val ALLOWLIST = "allowlist"
+        const val CRASH_REPORTER = "crash_reporter"
     }
 
     private object Value {
-        val DEFAULT = "default"
-        val FIREFOX = "firefox"
-        val SELECTION = "selection"
-        val ERASE = "erase"
-        val ERASE_AND_OPEN = "erase_open"
-        val ERASE_TO_HOME = "erase_home"
-        val ERASE_TO_APP = "erase_app"
-        val IMAGE = "image"
-        val LINK = "link"
-        val IMAGE_WITH_LINK = "image+link"
-        val CUSTOM_TAB = "custom_tab"
-        val SKIP = "skip"
-        val FINISH = "finish"
-        val OPEN = "open"
-        val DOWNLOAD = "download"
-        val URL = "url"
-        val SEARCH = "search"
-        val CANCEL = "cancel"
-        val ADD_TO_HOMESCREEN = "add_to_homescreen"
-        val TAB = "tab"
-        val WHATS_NEW = "whats_new"
-        val RESUME = "resume"
-        val RELOAD = "refresh"
-        val FULL_BROWSER = "full_browser"
-        val REPORT_ISSUE = "report_issue"
-        val SETTINGS = "settings"
-        val QUICK_ADD = "quick_add"
-        val FIND_IN_PAGE = "find_in_page"
-        val DEFAULT_BROWSER_TIP = "default_browser_tip"
-        val DISABLE_TRACKING_PROTECTION_TIP = "disable_tracking_protection_tip"
-        val ADD_TO_HOMESCREEN_TIP = "add_to_homescreen_tip"
-        val AUTOCOMPLETE_URL_TIP = "autocomplete_url_tip"
-        val OPEN_IN_NEW_TAB_TIP = "open_in_new_tab_tip"
-        val DISABLE_TIPS_TIP = "disable_tips_tip"
-        val SURVEY_TIP = "survey_tip"
-        val SURVEY_TIP_ES = "survey_tip_es"
-        val SURVEY_TIP_FR = "survey_tip_fr"
-        val CLOSE_TAB = "close_tab"
+        const val FIREFOX = "firefox"
+        const val SELECTION = "selection"
+        const val ERASE = "erase"
+        const val ERASE_AND_OPEN = "erase_open"
+        const val ERASE_TO_HOME = "erase_home"
+        const val ERASE_TO_APP = "erase_app"
+        const val IMAGE = "image"
+        const val LINK = "link"
+        const val CUSTOM_TAB = "custom_tab"
+        const val SKIP = "skip"
+        const val FINISH = "finish"
+        const val OPEN = "open"
+        const val DOWNLOAD = "download"
+        const val URL = "url"
+        const val SEARCH = "search"
+        const val CANCEL = "cancel"
+        const val ADD_TO_HOMESCREEN = "add_to_homescreen"
+        const val TAB = "tab"
+        const val WHATS_NEW = "whats_new"
+        const val RESUME = "resume"
+        const val RELOAD = "refresh"
+        const val FULL_BROWSER = "full_browser"
+        const val REPORT_ISSUE = "report_issue"
+        const val SETTINGS = "settings"
+        const val FIND_IN_PAGE = "find_in_page"
+        const val CLOSE_TAB = "close_tab"
     }
 
     private object Extra {
-        val FROM = "from"
-        val TO = "to"
-        val TOTAL = "total"
-        val SELECTED = "selected"
-        val HIGHLIGHTED = "highlighted"
-        val AUTOCOMPLETE = "autocomplete"
-        val SOURCE = "source"
-        val SUCCESS = "success"
-        val ERROR_CODE = "error_code"
-        val SEARCH_SUGGESTION = "search_suggestion"
-        val TOTAL_URI_COUNT = "total_uri_count"
-        val UNIQUE_DOMAINS_COUNT = "unique_domains_count"
-        val SUBMIT_CRASH = "submit_crash"
-    }
-
-    enum class BrowserContextMenuValue(val value: String) {
-        Link(Value.LINK),
-        Image(Value.IMAGE),
-        ImageWithLink(Value.IMAGE_WITH_LINK);
-
-        override fun toString(): String = value
+        const val FROM = "from"
+        const val TO = "to"
+        const val TOTAL = "total"
+        const val SELECTED = "selected"
+        const val HIGHLIGHTED = "highlighted"
+        const val SOURCE = "source"
+        const val SUCCESS = "success"
+        const val SEARCH_SUGGESTION = "search_suggestion"
+        const val TOTAL_URI_COUNT = "total_uri_count"
+        const val UNIQUE_DOMAINS_COUNT = "unique_domains_count"
+        const val SUBMIT_CRASH = "submit_crash"
     }
 
     @JvmStatic
@@ -219,13 +180,16 @@ object TelemetryWrapper {
             val preferences = PreferenceManager.getDefaultSharedPreferences(context)
 
             return preferences.getBoolean(
-                    resources.getString(R.string.pref_key_telemetry), isEnabledByDefault) && !AppConstants.isDevBuild
+                resources.getString(R.string.pref_key_telemetry),
+                isEnabledByDefault,
+            ) && !AppConstants.isDevBuild
         } finally {
             StrictMode.setThreadPolicy(threadPolicy)
         }
     }
 
     @JvmStatic
+    @Suppress("LongMethod")
     fun init(context: Context) {
         // When initializing the telemetry library it will make sure that all directories exist and
         // are readable/writable.
@@ -236,39 +200,38 @@ object TelemetryWrapper {
             val telemetryEnabled = isTelemetryEnabled(context)
 
             val configuration = TelemetryConfiguration(context)
-                    .setServerEndpoint("https://incoming.telemetry.mozilla.org")
-                    .setAppName(if (AppConstants.isKlarBuild) TELEMETRY_APP_NAME_KLAR else TELEMETRY_APP_NAME_FOCUS)
-                    .setUpdateChannel(BuildConfig.BUILD_TYPE)
-                    .setPreferencesImportantForTelemetry(
-                            resources.getString(R.string.pref_key_search_engine),
-                            resources.getString(R.string.pref_key_privacy_block_ads),
-                            resources.getString(R.string.pref_key_privacy_block_analytics),
-                            resources.getString(R.string.pref_key_privacy_block_social),
-                            resources.getString(R.string.pref_key_privacy_block_other),
-                            resources.getString(R.string.pref_key_performance_block_javascript),
-                            resources.getString(R.string.pref_key_performance_enable_cookies),
-                            resources.getString(R.string.pref_key_performance_block_webfonts),
-                            resources.getString(R.string.pref_key_locale),
-                            resources.getString(R.string.pref_key_secure),
-                            resources.getString(R.string.pref_key_default_browser),
-                            resources.getString(R.string.pref_key_autocomplete_preinstalled),
-                            resources.getString(R.string.pref_key_autocomplete_custom),
-                            resources.getString(R.string.pref_key_remote_debugging),
-                            resources.getString(R.string.pref_key_homescreen_tips),
-                            resources.getString(R.string.pref_key_open_new_tab),
-                            resources.getString(R.string.pref_key_show_search_suggestions),
-                            resources.getString(R.string.pref_key_fretboard_bucket_number))
-                    .setSettingsProvider(TelemetrySettingsProvider(context))
-                    .setCollectionEnabled(telemetryEnabled)
-                    .setUploadEnabled(telemetryEnabled)
-                    .setBuildId(TelemetryConfiguration(context).buildId)
+                .setServerEndpoint("https://incoming.telemetry.mozilla.org")
+                .setAppName(if (AppConstants.isKlarBuild) TELEMETRY_APP_NAME_KLAR else TELEMETRY_APP_NAME_FOCUS)
+                .setUpdateChannel(BuildConfig.BUILD_TYPE)
+                .setPreferencesImportantForTelemetry(
+                    resources.getString(R.string.pref_key_search_engine),
+                    resources.getString(R.string.pref_key_privacy_block_ads),
+                    resources.getString(R.string.pref_key_privacy_block_analytics),
+                    resources.getString(R.string.pref_key_privacy_block_social),
+                    resources.getString(R.string.pref_key_privacy_block_other3),
+                    resources.getString(R.string.pref_key_performance_block_javascript),
+                    resources.getString(R.string.pref_key_performance_enable_cookies),
+                    resources.getString(R.string.pref_key_performance_block_webfonts),
+                    resources.getString(R.string.pref_key_locale),
+                    resources.getString(R.string.pref_key_secure),
+                    resources.getString(R.string.pref_key_default_browser),
+                    resources.getString(R.string.pref_key_autocomplete_preinstalled),
+                    resources.getString(R.string.pref_key_autocomplete_custom),
+                    resources.getString(R.string.pref_key_remote_debugging),
+                    resources.getString(R.string.pref_key_show_search_suggestions),
+                )
+                .setSettingsProvider(TelemetrySettingsProvider(context))
+                .setCollectionEnabled(telemetryEnabled)
+                .setUploadEnabled(telemetryEnabled)
+                .setBuildId(TelemetryConfiguration(context).buildId)
 
             val serializer = JSONPingSerializer()
             val storage = FileTelemetryStorage(configuration, serializer)
-            val client = TelemetryClient(HttpURLConnectionClient())
+            val client = TelemetryClient(context.components.client.unwrap())
             val scheduler = JobSchedulerTelemetryScheduler()
 
-            TelemetryHolder.set(Telemetry(configuration, storage, client, scheduler)
+            TelemetryHolder.set(
+                Telemetry(configuration, storage, client, scheduler)
                     .addPingBuilder(TelemetryCorePingBuilder(configuration))
                     .addPingBuilder(TelemetryEventPingBuilder(configuration))
                     .also {
@@ -279,17 +242,22 @@ object TelemetryWrapper {
                             val mobileMetrics = metricsStorage.load() ?: JSONObject()
                             metricsStorage.clearStorage()
 
-                            it.addPingBuilder(TelemetryMobileMetricsPingBuilder(mobileMetrics,
-                                    configuration))
+                            it.addPingBuilder(
+                                TelemetryMobileMetricsPingBuilder(
+                                    mobileMetrics,
+                                    configuration,
+                                ),
+                            )
                         }
 
                         // Record new edited date
                         PreferenceManager.getDefaultSharedPreferences(context)
-                                .edit()
-                                .putLong(LAST_MOBILE_METRICS_PINGS, (dateFormat.format(Date()).toLong()))
-                                .apply()
+                            .edit()
+                            .putLong(LAST_MOBILE_METRICS_PINGS, (dateFormat.format(Date()).toLong()))
+                            .apply()
                     }
-                    .setDefaultSearchProvider(createDefaultSearchProvider(context)))
+                    .setDefaultSearchProvider(createDefaultSearchProvider(context)),
+            )
         } finally {
             StrictMode.setThreadPolicy(threadPolicy)
         }
@@ -314,14 +282,12 @@ object TelemetryWrapper {
     private fun withSessionCounts(event: TelemetryEvent): TelemetryEvent {
         val context = TelemetryHolder.get().configuration.context
 
-        val sessionManager = context.components.sessionManager
-        val sessions = sessionManager.sessions
-        val selectedSession = sessionManager.selectedSession
+        val state = context.components.store.state
+        val privateTabs = state.privateTabs
+        val positionOfSelectedTab = privateTabs.indexOfFirst { tab -> tab.id == state.selectedTabId }
 
-        val positionOfSelectedSession = sessions.indexOf(selectedSession)
-
-        event.extra(Extra.SELECTED, positionOfSelectedSession.toString())
-        event.extra(Extra.TOTAL, sessions.size.toString())
+        event.extra(Extra.SELECTED, positionOfSelectedTab.toString())
+        event.extra(Extra.TOTAL, privateTabs.size.toString())
 
         return event
     }
@@ -334,7 +300,9 @@ object TelemetryWrapper {
     }
 
     @VisibleForTesting var histogram = IntArray(HISTOGRAM_SIZE)
+
     @VisibleForTesting var domainMap = HashSet<String>()
+
     @VisibleForTesting var numUri = 0
 
     @JvmStatic
@@ -370,14 +338,14 @@ object TelemetryWrapper {
         histogram = IntArray(HISTOGRAM_SIZE)
 
         TelemetryEvent.create(Category.ACTION, Method.OPEN, Object.BROWSER).extra(
-                Extra.UNIQUE_DOMAINS_COUNT,
-                domainMap.size.toString()
+            Extra.UNIQUE_DOMAINS_COUNT,
+            domainMap.size.toString(),
         ).queue()
         domainMap.clear()
 
         TelemetryEvent.create(Category.ACTION, Method.OPEN, Object.BROWSER).extra(
-                Extra.TOTAL_URI_COUNT,
-                numUri.toString()
+            Extra.TOTAL_URI_COUNT,
+            numUri.toString(),
         ).queue()
         numUri = 0
 
@@ -387,31 +355,24 @@ object TelemetryWrapper {
     @JvmStatic
     fun stopMainActivity() {
         TelemetryHolder.get()
-                .queuePing(TelemetryCorePingBuilder.TYPE)
-                .queuePing(TelemetryEventPingBuilder.TYPE)
-                .queuePing(TelemetryMobileMetricsPingBuilder.TYPE)
-                .scheduleUpload()
+            .queuePing(TelemetryCorePingBuilder.TYPE)
+            .queuePing(TelemetryEventPingBuilder.TYPE)
+            .queuePing(TelemetryMobileMetricsPingBuilder.TYPE)
+            .scheduleUpload()
     }
 
     @JvmStatic
-    fun urlBarEvent(isUrl: Boolean, autocompleteResult: InlineAutocompleteEditText.AutocompleteResult) {
+    fun urlBarEvent(isUrl: Boolean) {
         if (isUrl) {
-            TelemetryWrapper.browseEvent(autocompleteResult)
+            browseEvent()
         } else {
-            TelemetryWrapper.searchEnterEvent()
+            searchEnterEvent()
         }
     }
 
-    private fun browseEvent(autocompleteResult: InlineAutocompleteEditText.AutocompleteResult) {
-        val event = TelemetryEvent.create(Category.ACTION, Method.TYPE_URL, Object.SEARCH_BAR)
-                .extra(Extra.AUTOCOMPLETE, (!autocompleteResult.text.isEmpty()).toString())
-
-        if (!autocompleteResult.text.isEmpty()) {
-            event.extra(Extra.TOTAL, autocompleteResult.totalItems.toString())
-            event.extra(Extra.SOURCE, autocompleteResult.source)
-        }
-
-        event.queue()
+    private fun browseEvent() {
+        TelemetryEvent.create(Category.ACTION, Method.TYPE_URL, Object.SEARCH_BAR)
+            .queue()
     }
 
     @JvmStatic
@@ -428,27 +389,6 @@ object TelemetryWrapper {
         }
     }
 
-    /**
-     * Sends a list of the custom tab options that a custom-tab intent made use of.
-     */
-    @JvmStatic
-    fun customTabsIntentEvent(options: List<String>) {
-        val event = TelemetryEvent.create(Category.ACTION, Method.INTENT_CUSTOM_TAB, Object.APP)
-
-        // We can send at most 10 extras per event - we just ignore the rest if there are too many
-        val extrasCount: Int = if (options.size > MAXIMUM_CUSTOM_TAB_EXTRAS) {
-            MAXIMUM_CUSTOM_TAB_EXTRAS
-        } else {
-            options.size
-        }
-
-        for (option in options.subList(0, extrasCount)) {
-            event.extra(option, "true")
-        }
-
-        event.queue()
-    }
-
     @JvmStatic
     fun downloadDialogDownloadEvent(sentToDownload: Boolean) {
         if (sentToDownload) {
@@ -461,7 +401,7 @@ object TelemetryWrapper {
     @JvmStatic
     fun closeCustomTabEvent() {
         withSessionCounts(TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.CUSTOM_TAB_CLOSE_BUTTON))
-                .queue()
+            .queue()
     }
 
     @JvmStatic
@@ -479,7 +419,7 @@ object TelemetryWrapper {
         TelemetryEvent.create(Category.ACTION, Method.TEXT_SELECTION_INTENT, Object.APP).queue()
     }
 
-    private fun searchEnterEvent() {
+    fun searchEnterEvent() {
         val telemetry = TelemetryHolder.get()
 
         TelemetryEvent.create(Category.ACTION, Method.TYPE_QUERY, Object.SEARCH_BAR).queue()
@@ -489,14 +429,13 @@ object TelemetryWrapper {
         telemetry.recordSearch(SearchesMeasurement.LOCATION_ACTIONBAR, searchEngine)
     }
 
-    @JvmStatic
     fun searchSelectEvent(isSearchSuggestion: Boolean) {
         val telemetry = TelemetryHolder.get()
 
         TelemetryEvent
-                .create(Category.ACTION, Method.TYPE_SELECT_QUERY, Object.SEARCH_BAR)
-                .extra(Extra.SEARCH_SUGGESTION, "$isSearchSuggestion")
-                .queue()
+            .create(Category.ACTION, Method.TYPE_SELECT_QUERY, Object.SEARCH_BAR)
+            .extra(Extra.SEARCH_SUGGESTION, "$isSearchSuggestion")
+            .queue()
 
         val searchEngineIdentifier = getDefaultSearchEngineIdentifierForTelemetry(telemetry.configuration.context)
 
@@ -504,50 +443,47 @@ object TelemetryWrapper {
     }
 
     private fun getDefaultSearchEngineIdentifierForTelemetry(context: Context): String {
-        val searchEngine = context.components.searchEngineManager.getDefaultSearchEngine(
-            context,
-            Settings.getInstance(context).defaultSearchEngineName
-        ).identifier
-
-        return if (CustomSearchEngineStore.isCustomSearchEngine(searchEngine, context)) {
-            // Don't collect possibly sensitive info for custom search engines, send "custom" instead
-            CustomSearchEngineStore.ENGINE_TYPE_CUSTOM
+        val searchEngine = context.components.store.state.search.selectedOrDefaultSearchEngine
+        return if (searchEngine?.type == SearchEngine.Type.CUSTOM) {
+            "custom"
         } else {
-            searchEngine
+            searchEngine?.name ?: "<none>"
         }
     }
 
     @JvmStatic
     fun eraseEvent() {
         withSessionCounts(TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.ERASE_BUTTON))
-                .queue()
+            .queue()
     }
 
     @JvmStatic
     fun eraseBackToHomeEvent() {
         withSessionCounts(TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.BACK_BUTTON, Value.ERASE_TO_HOME))
-                .queue()
+            .queue()
     }
 
     @JvmStatic
     fun eraseBackToAppEvent() {
         withSessionCounts(TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.BACK_BUTTON, Value.ERASE_TO_APP))
-                .queue()
+            .queue()
     }
 
     @JvmStatic
     fun eraseNotificationEvent() {
         withSessionCounts(TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.NOTIFICATION, Value.ERASE))
-                .queue()
+            .queue()
     }
 
     @JvmStatic
     fun eraseAndOpenNotificationActionEvent() {
-        withSessionCounts(TelemetryEvent.create(
+        withSessionCounts(
+            TelemetryEvent.create(
                 Category.ACTION,
                 Method.CLICK,
                 Object.NOTIFICATION_ACTION,
-                Value.ERASE_AND_OPEN)
+                Value.ERASE_AND_OPEN,
+            ),
         ).queue()
     }
 
@@ -559,11 +495,12 @@ object TelemetryWrapper {
     @JvmStatic
     fun closeTabButtonTapped(crashSubmitted: Boolean) {
         TelemetryEvent.create(
-                Category.ACTION,
-                Method.CLICK,
-                Object.CRASH_REPORTER,
-                Value.CLOSE_TAB)
-                .extra(Extra.SUBMIT_CRASH, crashSubmitted.toString()).queue()
+            Category.ACTION,
+            Method.CLICK,
+            Object.CRASH_REPORTER,
+            Value.CLOSE_TAB,
+        )
+            .extra(Extra.SUBMIT_CRASH, crashSubmitted.toString()).queue()
     }
 
     @JvmStatic
@@ -579,10 +516,10 @@ object TelemetryWrapper {
     @JvmStatic
     fun addToHomescreenShortcutEvent() {
         TelemetryEvent.create(
-                Category.ACTION,
-                Method.CLICK,
-                Object.ADD_TO_HOMESCREEN_DIALOG,
-                Value.ADD_TO_HOMESCREEN
+            Category.ACTION,
+            Method.CLICK,
+            Object.ADD_TO_HOMESCREEN_DIALOG,
+            Value.ADD_TO_HOMESCREEN,
         ).queue()
     }
 
@@ -594,7 +531,7 @@ object TelemetryWrapper {
     @JvmStatic
     fun eraseShortcutEvent() {
         withSessionCounts(TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.SHORTCUT, Value.ERASE))
-                .queue()
+            .queue()
     }
 
     @JvmStatic
@@ -606,14 +543,14 @@ object TelemetryWrapper {
     @JvmStatic
     fun eraseTaskRemoved() {
         withSessionCounts(TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.RECENT_APPS, Value.ERASE))
-                .queue()
+            .queue()
     }
 
     @JvmStatic
     fun settingsEvent(key: String, value: String) {
         TelemetryEvent.create(Category.ACTION, Method.CHANGE, Object.SETTING, key)
-                .extra(Extra.TO, value)
-                .queue()
+            .extra(Extra.TO, value)
+            .queue()
     }
 
     @JvmStatic
@@ -649,7 +586,7 @@ object TelemetryWrapper {
     @JvmStatic
     fun openLinkInNewTabEvent() {
         withSessionCounts(TelemetryEvent.create(Category.ACTION, Method.OPEN, Object.BROWSER_CONTEXTMENU, Value.TAB))
-                .queue()
+            .queue()
     }
 
     @JvmStatic
@@ -659,25 +596,10 @@ object TelemetryWrapper {
                 Category.ACTION,
                 Method.OPEN,
                 Object.BROWSER_CONTEXTMENU,
-                Value.FULL_BROWSER
-            )
+                Value.FULL_BROWSER,
+            ),
         )
             .queue()
-    }
-
-    @JvmStatic
-    fun openWebContextMenuEvent() {
-        TelemetryEvent.create(Category.ACTION, Method.LONG_PRESS, Object.BROWSER).queue()
-    }
-
-    @JvmStatic
-    fun cancelWebContextMenuEvent(value: BrowserContextMenuValue) {
-        TelemetryEvent.create(Category.ACTION, Method.CANCEL, Object.BROWSER_CONTEXTMENU, value.toString()).queue()
-    }
-
-    @JvmStatic
-    fun openDefaultAppEvent() {
-        TelemetryEvent.create(Category.ACTION, Method.OPEN, Object.MENU, Value.DEFAULT).queue()
     }
 
     /**
@@ -714,16 +636,6 @@ object TelemetryWrapper {
     }
 
     @JvmStatic
-    fun blockingSwitchEvent(isBlockingEnabled: Boolean) {
-        TelemetryEvent.create(
-                Category.ACTION,
-                Method.CLICK,
-                Object.BLOCKING_SWITCH,
-                isBlockingEnabled.toString()
-        ).queue()
-    }
-
-    @JvmStatic
     fun openExceptionsListSetting() {
         TelemetryEvent.create(Category.ACTION, Method.OPEN, Object.ALLOWLIST).queue()
     }
@@ -746,7 +658,7 @@ object TelemetryWrapper {
             Category.ACTION,
             Method.CLICK,
             Object.DESKTOP_REQUEST_CHECK,
-            shouldRequestDesktop.toString()
+            shouldRequestDesktop.toString(),
         ).queue()
     }
 
@@ -772,9 +684,9 @@ object TelemetryWrapper {
 
     @JvmStatic
     fun openWhatsNewEvent(highlighted: Boolean) {
-        TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.MENU, Value.WHATS_NEW)
-                .extra(Extra.HIGHLIGHTED, highlighted.toString())
-                .queue()
+        TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.SETTING, Value.WHATS_NEW)
+            .extra(Extra.HIGHLIGHTED, highlighted.toString())
+            .queue()
     }
 
     @JvmStatic
@@ -788,86 +700,42 @@ object TelemetryWrapper {
     }
 
     @JvmStatic
-    fun switchTabInTabsTrayEvent() {
-        withSessionCounts(TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.TABS_TRAY, Value.TAB))
-                .queue()
-    }
-
-    @JvmStatic
-    fun eraseInTabsTrayEvent() {
-        withSessionCounts(TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.TABS_TRAY, Value.ERASE))
-                .queue()
-    }
-
-    @JvmStatic
-    fun swipeReloadEvent() {
-        TelemetryEvent.create(Category.ACTION, Method.SWIPE, Object.BROWSER, Value.RELOAD).queue()
-    }
-
-    @JvmStatic
     fun menuReloadEvent() {
         TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.MENU, Value.RELOAD).queue()
     }
 
-    @JvmStatic
-    fun sslErrorEvent(fromPage: Boolean, error: SslError) {
-        // SSL Errors from https://developer.android.com/reference/android/net/http/SslError.html
-        val primaryErrorMessage = when (error.primaryError) {
-            SslError.SSL_DATE_INVALID -> "SSL_DATE_INVALID"
-            SslError.SSL_EXPIRED -> "SSL_EXPIRED"
-            SslError.SSL_IDMISMATCH -> "SSL_IDMISMATCH"
-            SslError.SSL_NOTYETVALID -> "SSL_NOTYETVALID"
-            SslError.SSL_UNTRUSTED -> "SSL_UNTRUSTED"
-            SslError.SSL_INVALID -> "SSL_INVALID"
-            else -> "Undefined SSL Error"
-        }
-        TelemetryEvent.create(Category.ERROR, if (fromPage) Method.PAGE else Method.RESOURCE, Object.BROWSER)
-                .extra(Extra.ERROR_CODE, primaryErrorMessage)
-                .queue()
-    }
-
     enum class AutoCompleteEventSource {
-        SETTINGS, QUICK_ADD
+        SETTINGS,
     }
 
     fun saveAutocompleteDomainEvent(eventSource: AutoCompleteEventSource) {
         val source = when (eventSource) {
             AutoCompleteEventSource.SETTINGS -> Value.SETTINGS
-            AutoCompleteEventSource.QUICK_ADD -> Value.QUICK_ADD
         }
 
         TelemetryEvent.create(Category.ACTION, Method.SAVE, Object.AUTOCOMPLETE_DOMAIN)
-                .extra(Extra.SOURCE, source)
-                .queue()
+            .extra(Extra.SOURCE, source)
+            .queue()
     }
 
     fun removeAutocompleteDomainsEvent(count: Int) {
         TelemetryEvent.create(Category.ACTION, Method.REMOVE, Object.AUTOCOMPLETE_DOMAIN)
-                .extra(Extra.TOTAL, count.toString())
-                .queue()
+            .extra(Extra.TOTAL, count.toString())
+            .queue()
     }
 
     fun reorderAutocompleteDomainEvent(from: Int, to: Int) {
         TelemetryEvent.create(Category.ACTION, Method.REORDER, Object.AUTOCOMPLETE_DOMAIN)
-                .extra(Extra.FROM, from.toString())
-                .extra(Extra.TO, to.toString())
-                .queue()
-    }
-
-    fun autofillShownEvent() {
-        TelemetryEvent.create(Category.ACTION, Method.SHOW, Object.AUTOFILL).queue()
-    }
-
-    @JvmStatic
-    fun autofillPerformedEvent() {
-        TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.AUTOFILL).queue()
+            .extra(Extra.FROM, from.toString())
+            .extra(Extra.TO, to.toString())
+            .queue()
     }
 
     @JvmStatic
     fun setDefaultSearchEngineEvent(source: String) {
         TelemetryEvent.create(Category.ACTION, Method.SAVE, Object.SEARCH_ENGINE_SETTING)
-                .extra(Extra.SOURCE, source)
-                .queue()
+            .extra(Extra.SOURCE, source)
+            .queue()
     }
 
     @JvmStatic
@@ -893,30 +761,20 @@ object TelemetryWrapper {
     @JvmStatic
     fun saveCustomSearchEngineEvent(success: Boolean) {
         TelemetryEvent.create(Category.ACTION, Method.SAVE, Object.CUSTOM_SEARCH_ENGINE)
-                .extra(Extra.SUCCESS, success.toString())
-                .queue()
+            .extra(Extra.SUCCESS, success.toString())
+            .queue()
     }
 
     @JvmStatic
     fun removeSearchEnginesEvent(selected: Int) {
         TelemetryEvent.create(Category.ACTION, Method.REMOVE, Object.REMOVE_SEARCH_ENGINES)
-                .extra(Extra.SELECTED, selected.toString())
-                .queue()
+            .extra(Extra.SELECTED, selected.toString())
+            .queue()
     }
 
     @JvmStatic
     fun addSearchEngineLearnMoreEvent() {
         TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.ADD_SEARCH_ENGINE_LEARN_MORE).queue()
-    }
-
-    @JvmStatic
-    fun changeToGeckoEngineEvent() {
-        TelemetryEvent.create(Category.ACTION, Method.CHANGE, Object.GECKO_ENGINE).queue()
-    }
-
-    @JvmStatic
-    fun recordActiveExperiments(context: Context) {
-        TelemetryHolder.get().recordActiveExperiments(context.activeExperimentNames)
     }
 
     @JvmStatic
@@ -927,13 +785,8 @@ object TelemetryWrapper {
     @JvmStatic
     fun respondToSearchSuggestionPrompt(enable: Boolean) {
         TelemetryEvent
-                .create(Category.ACTION, Method.CLICK, Object.SEARCH_SUGGESTION_PROMPT, "$enable")
-                .queue()
-    }
-
-    @JvmStatic
-    fun makeDefaultBrowserOpenWith() {
-        TelemetryEvent.create(Category.ACTION, Method.SHOW, Object.MAKE_DEFAULT_BROWSER_OPEN_WITH).queue()
+            .create(Category.ACTION, Method.CLICK, Object.SEARCH_SUGGESTION_PROMPT, "$enable")
+            .queue()
     }
 
     @JvmStatic
@@ -944,54 +797,10 @@ object TelemetryWrapper {
     @JvmStatic
     fun dayPassedSinceLastUpload(context: Context): Boolean {
         val dateOfLastPing = PreferenceManager
-                .getDefaultSharedPreferences(context).getLong(LAST_MOBILE_METRICS_PINGS, 0)
+            .getDefaultSharedPreferences(context).getLong(LAST_MOBILE_METRICS_PINGS, 0)
         // Make sure a minimum of 1 day has passed since we collected data
         val currentDateLong = dateFormat.format(Date()).toLong()
         return currentDateLong > dateOfLastPing
-    }
-
-    @JvmStatic
-    @Suppress("ComplexMethod") // Not actually complex
-    fun displayTipEvent(tipId: Int) {
-
-        val telemetryValue = when (tipId) {
-            R.string.tip_open_in_new_tab -> Value.OPEN_IN_NEW_TAB_TIP
-            R.string.tip_add_to_homescreen -> Value.ADD_TO_HOMESCREEN_TIP
-            R.string.tip_disable_tracking_protection -> Value.DISABLE_TRACKING_PROTECTION_TIP
-            R.string.tip_set_default_browser -> Value.DEFAULT_BROWSER_TIP
-            R.string.tip_autocomplete_url -> Value.AUTOCOMPLETE_URL_TIP
-            R.string.tip_disable_tips2 -> Value.DISABLE_TIPS_TIP
-            R.string.tip_take_survey -> Value.SURVEY_TIP
-            R.string.tip_take_survey_es -> Value.SURVEY_TIP_ES
-            R.string.tip_take_survey_fr -> Value.SURVEY_TIP_FR
-            else -> {
-                // Unknown tip, fail silently rather than crashing.
-                return
-            }
-        }
-
-        TelemetryEvent.create(Category.ACTION, Method.SHOW, Object.TIP, telemetryValue).queue()
-    }
-
-    @JvmStatic
-    fun pressTipEvent(tipId: Int) {
-
-        val telemetryValue = when (tipId) {
-            R.string.tip_open_in_new_tab -> Value.OPEN_IN_NEW_TAB_TIP
-            R.string.tip_add_to_homescreen -> Value.ADD_TO_HOMESCREEN_TIP
-            R.string.tip_set_default_browser -> Value.DEFAULT_BROWSER_TIP
-            R.string.tip_autocomplete_url -> Value.AUTOCOMPLETE_URL_TIP
-            R.string.tip_disable_tips2 -> Value.DISABLE_TIPS_TIP
-            R.string.tip_take_survey -> Value.SURVEY_TIP
-            R.string.tip_take_survey_es -> Value.SURVEY_TIP_ES
-            R.string.tip_take_survey_fr -> Value.SURVEY_TIP_FR
-            else -> {
-                // Unknown tip, fail silently rather than crashing.
-                return
-            }
-        }
-
-        TelemetryEvent.create(Category.ACTION, Method.CLICK, Object.TIP, telemetryValue).queue()
     }
 
     private fun isDeviceWithTelemetryDisabled(): Boolean {

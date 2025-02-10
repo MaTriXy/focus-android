@@ -6,20 +6,19 @@
 package org.mozilla.focus.firstrun
 
 import android.content.Context
-import androidx.viewpager.widget.PagerAdapter
-import androidx.viewpager.widget.ViewPager
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
-
+import androidx.viewpager.widget.PagerAdapter
+import androidx.viewpager.widget.ViewPager
 import org.mozilla.focus.R
 
 class FirstrunPagerAdapter(
     private val context: Context,
-    private val listener: View.OnClickListener
+    private val listener: View.OnClickListener,
 ) : PagerAdapter() {
 
     private data class FirstrunPage(val title: String, val text: String, val imageResource: Int) {
@@ -30,23 +29,28 @@ class FirstrunPagerAdapter(
 
     init {
         val appName = context.getString(R.string.app_name)
-        this.pages = arrayOf(
-                FirstrunPage(
-                        context.getString(R.string.firstrun_defaultbrowser_title),
-                        context.getString(R.string.firstrun_defaultbrowser_text2),
-                        R.drawable.onboarding_img1),
-                FirstrunPage(
-                        context.getString(R.string.firstrun_search_title),
-                        context.getString(R.string.firstrun_search_text),
-                        R.drawable.onboarding_img4),
-                FirstrunPage(
-                        context.getString(R.string.firstrun_shortcut_title),
-                        context.getString(R.string.firstrun_shortcut_text, appName),
-                        R.drawable.onboarding_img3),
-                FirstrunPage(
-                        context.getString(R.string.firstrun_privacy_title),
-                        context.getString(R.string.firstrun_privacy_text, appName),
-                        R.drawable.onboarding_img2))
+        pages = arrayOf(
+            FirstrunPage(
+                context.getString(R.string.firstrun_defaultbrowser_title),
+                context.getString(R.string.firstrun_defaultbrowser_text2),
+                R.drawable.onboarding_img1,
+            ),
+            FirstrunPage(
+                context.getString(R.string.firstrun_search_title),
+                context.getString(R.string.firstrun_search_text),
+                R.drawable.onboarding_img4,
+            ),
+            FirstrunPage(
+                context.getString(R.string.firstrun_shortcut_title),
+                context.getString(R.string.firstrun_shortcut_text, appName),
+                R.drawable.onboarding_img3,
+            ),
+            FirstrunPage(
+                context.getString(R.string.firstrun_privacy_title),
+                context.getString(R.string.firstrun_privacy_text, appName),
+                R.drawable.onboarding_img2,
+            ),
+        )
     }
 
     private fun getView(position: Int, pager: ViewPager): View {
@@ -68,7 +72,7 @@ class FirstrunPagerAdapter(
         if (position == pages.size - 1) {
             buttonView.setText(R.string.firstrun_close_button)
             buttonView.id = R.id.finish
-            buttonView.contentDescription = buttonView.text.toString().toLowerCase()
+            buttonView.contentDescription = buttonView.text.toString().lowercase()
         } else {
             buttonView.setText(R.string.firstrun_next_button)
             buttonView.id = R.id.next
@@ -78,7 +82,7 @@ class FirstrunPagerAdapter(
     }
 
     fun getPageAccessibilityDescription(position: Int): String =
-            pages[position].contentDescription
+        pages[position].contentDescription
 
     override fun isViewFromObject(view: View, any: Any) = view === any
 

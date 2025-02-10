@@ -5,6 +5,7 @@
 package org.mozilla.focus.screenshots;
 
 import android.os.SystemClock;
+
 import androidx.test.runner.AndroidJUnit4;
 import androidx.test.uiautomator.UiObjectNotFoundException;
 import androidx.test.uiautomator.UiScrollable;
@@ -13,6 +14,7 @@ import androidx.test.uiautomator.UiSelector;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.ClassRule;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mozilla.focus.R;
@@ -35,6 +37,7 @@ import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
 import static androidx.test.espresso.matcher.ViewMatchers.withId;
 import static androidx.test.espresso.matcher.ViewMatchers.withText;
 
+@Ignore("See: https://github.com/mozilla-mobile/mobile-test-eng/issues/305")
 @RunWith(AndroidJUnit4.class)
 public class AllowListScreenshots extends ScreenshotTest {
 
@@ -76,12 +79,12 @@ public class AllowListScreenshots extends ScreenshotTest {
     @Test
     public void takeScreenshotsOfMenuandAllowlist() throws UiObjectNotFoundException {
         SystemClock.sleep(5000);
-        onView(withId(R.id.urlView))
+        onView(withId(R.id.mozac_browser_toolbar_edit_url_view))
                 .check(matches(isDisplayed()))
                 .check(matches(hasFocus()))
                 .perform(click(), replaceText(webServer.url("/").toString()));
 
-        onView(withId(R.id.urlView))
+        onView(withId(R.id.mozac_browser_toolbar_edit_url_view))
                 .check(matches(isDisplayed()))
                 .check(matches(hasFocus()))
                 .perform(pressImeActionButton());
@@ -93,7 +96,7 @@ public class AllowListScreenshots extends ScreenshotTest {
 
         TestHelper.menuButton.perform(click());
         Screengrab.screenshot("BrowserViewMenu");
-        onView(withId(R.id.blocking_switch)).perform(click());
+        onView(withId(R.id.enhanced_tracking)).perform(click());
 
         // Open setting
         onView(withId(R.id.menuView))
